@@ -251,9 +251,9 @@ with col_draws:
     
     components.html(full_html, height=640, scrolling=False)
 
-# Prawa kolumna: Podsumowanie pozycji (sortowane wg Najczęstsza)
+# Prawa kolumna: Podsumowanie pozycji (zawsze zablokowane od największej do najmniejszej liczby powtórzeń)
 with col_stats:
-    st.subheader("📊 Analiza pozycji (Trafienia T+1)")
+    st.subheader(f"📊 Analiza pozycji (Trafienia T+1)")
     
     sets_list = df_window["numbers_set"].tolist()
     total_transitions = len(df_window) - 1
@@ -284,22 +284,24 @@ with col_stats:
         
         pos_stats.append({
             "Pozycja": f"Poz. {i:02d}",
+            "raw_hits": repeat_t1_count,  # Czysta liczba do bezbłędnego sortowania matematycznego
             "Trafienia T+1": f"{repeat_t1_count} ({repeat_pct:.1f}%)",
             "Ostatnia": last_draw[pos_col],
             "Najczęstsza": f"{mode_val} (x{most_common_cnt})",
-            "hits_cnt": most_common_cnt,
             "Średnia": round(series.mean(), 1)
         })
         
-    df_pos_stats = pd.DataFrame(pos_stats).sort_values(by="hits_cnt", ascending=False).drop(columns=["hits_cnt"])
+    # 1. Zawsze sortujemy matematycznie malejąco (największe na górze: 11, 10, 8, 7...)
+    df_pos_stats = pd.DataFrame(pos_stats).sort_values(by="raw_hits", ascending=False).drop(columns=["raw_hits"])
     
+    # 2. Wyświetlamy tabelę z wąskimi kolumnami i stałym porządkiem
     st.dataframe(
         df_pos_stats,
         column_config={
             "Pozycja": st.column_config.TextColumn("Pozycja", width="small"),
             "Trafienia T+1": st.column_config.TextColumn("Trafienia T+1", width="small"),
             "Ostatnia": st.column_config.NumberColumn("Ostatnia", width="small"),
-            "Najczęstsza": st.column_config.TextColumn("↓ Najczęstsza", width="small"),
+            "Najczęstsza": st.column_config.TextColumn("Najczęstsza", width="small"),
             "Średnia": st.column_config.NumberColumn("Średnia", format="%.1f", width="small")
         },
         hide_index=True,
