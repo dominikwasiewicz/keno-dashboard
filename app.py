@@ -297,9 +297,9 @@ with col_stats:
         df_pos_stats,
         column_config={
             "Pozycja": st.column_config.TextColumn("Pozycja", width="small"),
-            "Trafienia T+1": st.column_config.TextColumn("Trafienia T+1", width="medium"),
+            "Trafienia T+1": st.column_config.TextColumn("Trafienia T+1", width="small"),
             "Ostatnia": st.column_config.NumberColumn("Ostatnia", width="small"),
-            "Najczęstsza": st.column_config.TextColumn("↓ Najczęstsza", width="medium"),
+            "Najczęstsza": st.column_config.TextColumn("↓ Najczęstsza", width="small"),
             "Średnia": st.column_config.NumberColumn("Średnia", format="%.1f", width="small")
         },
         hide_index=True,
