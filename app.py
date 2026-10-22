@@ -518,7 +518,6 @@ else:
             "Losowanie bazowe": f"#{curr['draw_id']} ({curr['draw_time']})",
             "Łącznie kwadratów": curr["total_squares"]
         }
-        # Dodajemy kolumny z wylosowanymi kulami na badanych pozycjach
         for pos_num in selected_indices:
             row_entry[f"Kula Poz. {pos_num:02d}"] = curr[f"Kula Poz. {pos_num:02d}"]
             
@@ -528,26 +527,52 @@ else:
         
     df_timeline = pd.DataFrame(timeline)
     
-    # Podsumowanie w metrykach
+    # Obliczanie aktualnego oczekiwania od ostatniego trafienia
+    # Ostatnie możliwe przejście T -> T+1 kończy się na indeksie (total_rows - 2)
+    last_evaluated_idx = total_rows - 2
+    
+    if occurrences:
+        last_hit_idx = occurrences[-1]["idx"]
+        current_wait_draws = last_evaluated_idx - last_hit_idx
+        current_wait_days = round(current_wait_draws / 260.0, 2)
+        last_hit_label = f"#{occurrences[-1]['draw_id']} ({occurrences[-1]['draw_time']})"
+    else:
+        current_wait_draws = total_rows - 1
+        current_wait_days = round(current_wait_draws / 260.0, 2)
+        last_hit_label = "Brak w historii"
+
     k_name = ", ".join(selected_pos_labels)
     st.write(f"### Zestaw: **{k_name}**")
     
-    m1, m2, m3, m4 = st.columns(4)
+    # Kafelki z metrykami (5 kolumn)
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Łącznie trafień", f"{len(df_timeline)} razy")
     
     if gaps_draws:
         avg_gap = round(sum(gaps_draws) / len(gaps_draws), 1)
         avg_days = round(avg_gap / 260.0, 2)
-        m2.metric("Odstęp minimalny", f"{min(gaps_draws)} losowań")
+        diff_from_avg = round(current_wait_draws - avg_gap, 1)
+        
+        m2.metric("Odstęp minimalny", f"{min(gaps_draws)} los.")
         m3.metric("Odstęp średni", f"{avg_gap} los. (~{avg_days} dn.)")
-        m4.metric("Odstęp maksymalny", f"{max(gaps_draws)} losowań")
+        m4.metric("Odstęp maksymalny", f"{max(gaps_draws)} los.")
+        m5.metric(
+            "Aktualne oczekiwanie",
+            f"{current_wait_draws} los. (~{current_wait_days} dn.)",
+            delta=f"{diff_from_avg:+} los. vs średnia",
+            delta_color="inverse"
+        )
     else:
         m2.metric("Odstęp minimalny", "—")
         m3.metric("Odstęp średni", "—")
         m4.metric("Odstęp maksymalny", "—")
-        
+        m5.metric("Aktualne oczekiwanie", f"{current_wait_draws} losowań")
+
+    st.caption(f"ℹ️ Ostatnie trafienie zestawu: **{last_hit_label}** | Ostatnie zbadane losowanie w bazie: **#{target_data.iloc[-1]['draw_id']}**")
+    
     st.write("")
     if not df_timeline.empty:
-        st.dataframe(df_timeline, use_container_width=True, hide_index=True)
+        # Odwracamy kolejność tabeli, aby na samej górze widzieć najświeższe trafienia
+        st.dataframe(df_timeline.iloc[::-1].reset_index(drop=True), use_container_width=True, hide_index=True)
     else:
         st.warning(f"Zestaw {k_name} nie trafił wspólnie ani razu w całej załadowanej bazie.")
