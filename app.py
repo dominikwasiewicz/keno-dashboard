@@ -382,3 +382,172 @@ st.dataframe(
     use_container_width=True,
     height=360
 )
+st.divider()
+st.subheader("🔬 Weryfikacja powtórzeń dla 2 i 3 pozycji (Pełna baza)")
+
+col_k, col_info = st.columns([1, 2])
+with col_k:
+    k_target = st.radio(
+        "Wielkość badanego zestawu pozycji:",
+        options=[2, 3],
+        horizontal=True,
+        key="k_target_full_history"
+    )
+
+# UŻYWAMY PEŁNEGO 'df', A NIE ZAWĘŻONEGO 'df_window'
+target_data = df  # cała pobrana baza 
+
+total_rows = len(target_data)
+with col_info:
+    st.info(f"Analizowana baza losowań: **{total_rows}** wierszy (przejść T ➔ T+1: **{total_rows - 1}**).")
+from collections import defaultdict
+from itertools import combinations
+# 1. Zbieranie pozycji z białymi kwadratami dla każdego przejścia
+combo_appearances = defaultdict(list)
+
+for idx in range(total_rows - 1):
+    curr_nums = target_data.iloc[idx]["numbers_list"]
+    next_set = target_data.iloc[idx + 1]["numbers_set"]
+    
+    # Numery pozycji (1-20), które przeszły do T+1
+    hits = [i + 1 for i, n in enumerate(curr_nums) if n in next_set]
+    
+    if len(hits) >= k_target:
+        for combo in combinations(hits, k_target):
+            combo_appearances[combo].append(idx)
+
+# 2. Wyliczenie statystyk odstępów
+results = []
+for combo, indices in combo_appearances.items():
+    cnt = len(indices)
+    if cnt >= 2:
+        gaps = [indices[i+1] - indices[i] for i in range(len(indices)-1)]
+        min_g = min(gaps)
+        max_g = max(gaps)
+        avg_g = round(sum(gaps) / len(gaps), 1)
+    elif cnt == 1:
+        min_g, max_g, avg_g = "-", "-", "-"
+    else:
+        continue
+
+    results.append({
+        f"Zestaw {k_target} pozycji": ", ".join(f"Poz. {p:02d}" for p in combo),
+        "Ilość trafień": cnt,
+        "Odstęp minimalny": min_g,
+        "Odstęp średni": avg_g,
+        "Odstęp maksymalny": max_g,
+        "raw_count": cnt
+    })
+
+df_res = pd.DataFrame(results)
+
+if not df_res.empty:
+    df_res = df_res.sort_values(by="raw_count", ascending=False).drop(columns=["raw_count"])
+    st.dataframe(df_res, use_container_width=True, hide_index=True)
+else:
+    st.warning("Brak danych do wyświetlenia.")
+    st.divider()
+st.subheader("🎯 Sprawdzarka dowolnego zestawu 2 lub 3 pozycji (Odstępy i Dni)")
+
+# Wybór pozycji z multiselect (od 2 do 3 pozycji)
+available_positions = [f"Poz. {i:02d}" for i in range(1, 21)]
+selected_pos_labels = st.multiselect(
+    "Wybierz 2 lub 3 pozycje do zbadania:",
+    options=available_positions,
+    default=["Poz. 09", "Poz. 17"],
+    max_selections=3,
+    help="Możesz wybrać 2 pozycje (np. 9 i 17) albo dobrać trzecią pozycję."
+)
+
+if len(selected_pos_labels) < 2:
+    st.info("Wybierz co najmniej 2 pozycje, aby rozpocząć analizę.")
+else:
+    # Zamiana etykiet 'Poz. 09' na indeksy 1-based (np. 9)
+    selected_indices = [int(p.replace("Poz. ", "")) for p in selected_pos_labels]
+    
+    target_data = df  # pełna pobrana historia losowań
+    total_rows = len(target_data)
+    
+    occurrences = []
+    
+    for idx in range(total_rows - 1):
+        curr_row = target_data.iloc[idx]
+        next_set = target_data.iloc[idx + 1]["numbers_set"]
+        nums = curr_row["numbers_list"]
+        
+        # Sprawdzamy czy WSZYSTKIE wybrane pozycje dały biały kwadrat w T+1
+        all_hit = True
+        hit_details = {}
+        for pos_num in selected_indices:
+            ball = nums[pos_num - 1]
+            if ball in next_set:
+                hit_details[f"Kula Poz. {pos_num:02d}"] = ball
+            else:
+                all_hit = False
+                break
+                
+        if all_hit:
+            hit_record = {
+                "idx": idx,
+                "draw_id": curr_row["draw_id"],
+                "draw_time": curr_row.get("draw_time", "--:--"),
+                "total_squares": sum(1 for n in nums if n in next_set)
+            }
+            hit_record.update(hit_details)
+            occurrences.append(hit_record)
+            
+    # Obliczanie osi czasu i odstępów
+    timeline = []
+    gaps_draws = []
+    
+    for i in range(len(occurrences)):
+        curr = occurrences[i]
+        if i > 0:
+            prev = occurrences[i - 1]
+            gap_draws = curr["idx"] - prev["idx"]
+            gaps_draws.append(gap_draws)
+            gap_days = round(gap_draws / 260.0, 2)  # 260 losowań Keno na dobę
+            gap_draws_str = str(gap_draws)
+            gap_days_str = f"~{gap_days:.2f} dn."
+        else:
+            gap_draws_str = "— (pierwsze)"
+            gap_days_str = "— (start)"
+            
+        row_entry = {
+            "Nr trafienia": i + 1,
+            "Losowanie bazowe": f"#{curr['draw_id']} ({curr['draw_time']})",
+            "Łącznie kwadratów": curr["total_squares"]
+        }
+        # Dodajemy kolumny z wylosowanymi kulami na badanych pozycjach
+        for pos_num in selected_indices:
+            row_entry[f"Kula Poz. {pos_num:02d}"] = curr[f"Kula Poz. {pos_num:02d}"]
+            
+        row_entry["Odstęp (losowań)"] = gap_draws_str
+        row_entry["Odstęp (dni)"] = gap_days_str
+        timeline.append(row_entry)
+        
+    df_timeline = pd.DataFrame(timeline)
+    
+    # Podsumowanie w metrykach
+    k_name = ", ".join(selected_pos_labels)
+    st.write(f"### Zestaw: **{k_name}**")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Łącznie trafień", f"{len(df_timeline)} razy")
+    
+    if gaps_draws:
+        avg_gap = round(sum(gaps_draws) / len(gaps_draws), 1)
+        avg_days = round(avg_gap / 260.0, 2)
+        m2.metric("Odstęp minimalny", f"{min(gaps_draws)} losowań")
+        m3.metric("Odstęp średni", f"{avg_gap} los. (~{avg_days} dn.)")
+        m4.metric("Odstęp maksymalny", f"{max(gaps_draws)} losowań")
+    else:
+        m2.metric("Odstęp minimalny", "—")
+        m3.metric("Odstęp średni", "—")
+        m4.metric("Odstęp maksymalny", "—")
+        
+    st.write("")
+    if not df_timeline.empty:
+        st.dataframe(df_timeline, use_container_width=True, hide_index=True)
+    else:
+        st.warning(f"Zestaw {k_name} nie trafił wspólnie ani razu w całej załadowanej bazie.")
