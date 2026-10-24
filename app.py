@@ -109,7 +109,7 @@ numbers_str_last = ", ".join(f"{n:02d}" for n in last_draw["numbers_list"])
 st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['draw_time']}**) | Liczby: **{numbers_str_last}**")
 
 # Wybór okna analizy
-base_ranges = [5, 7, 12, 15, 20, 25, 50, 500]
+base_ranges = [7, 9, 12, 15, 20, 25, 50, 500]
 available_options = [opt for opt in base_ranges if opt <= len(df)]
 if not available_options:
     available_options = [len(df)]
@@ -420,12 +420,12 @@ numbers_str_last = ", ".join(f"{n:02d}" for n in last_draw["numbers_list"])
 st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['draw_time']}**) | Liczby: **{numbers_str_last}**")
 
 # Wybór okna analizy
-base_ranges = [5, 7, 12, 15, 20, 25, 50, 500]
+base_ranges = [7, 9, 12, 15, 20, 25, 50, 500]
 available_options = [opt for opt in base_ranges if opt <= len(df)]
 if not available_options:
     available_options = [len(df)]
 
-default_index = available_options.index(15) if 20 in available_options else 0
+default_index = available_options.index(20) if 20 in available_options else 0
 
 selected_window = st.radio(
     "Wybierz zakres analizy losowań:",
