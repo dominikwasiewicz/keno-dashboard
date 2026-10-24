@@ -314,5 +314,232 @@ with col_stats:
 
 
 
+from collections import defaultdict
+from itertools import combinations
 
+st.divider()
+st.subheader("🔬 Weryfikacja powtórzeń dla 2 i 3 pozycji")
+
+# 1. Wybór ilości analizowanych losowań
+col_opt, col_custom = st.columns([1.5, 1])
+
+with col_opt:
+    draws_choice = st.radio(
+        "Wybierz zakres analizy losowań:",
+        options=["300", "500", "1000", "Własna wartość"],
+        horizontal=True,
+        index=1,  # Domyślnie 500
+        key="draws_choice_radio"
+    )
+
+with col_custom:
+    if draws_choice == "Własna wartość":
+        chosen_limit = st.number_input(
+            "Wpisz ręcznie ilość losowań:",
+            min_value=10,
+            max_value=max(10, len(df)),
+            value=min(600, len(df)),
+            step=50,
+            key="custom_draws_input"
+        )
+    else:
+        chosen_limit = int(draws_choice)
+
+# 2. Przycięcie danych do wybranej liczby ostatnich losowań
+available_total = len(df)
+effective_limit = min(chosen_limit, available_total)
+target_data = df.tail(effective_limit).reset_index(drop=True)
+total_rows = len(target_data)
+
+# 3. Wybór zestawu (2 lub 3) i pasek informacyjny
+col_k, col_info = st.columns([1, 2])
+with col_k:
+    k_target = st.radio(
+        "Wielkość badanego zestawu pozycji:",
+        options=[2, 3],
+        horizontal=True,
+        key="k_target_selector"
+    )
+
+with col_info:
+    if chosen_limit > available_total:
+        st.warning(f"Żądano **{chosen_limit}**, ale w bazie jest obecnie **{available_total}** losowań. Analizowane wiersze: **{total_rows}** (przejść T ➔ T+1: **{total_rows - 1}**).")
+    else:
+        st.info(f"Analizowana baza losowań: **{total_rows}** wierszy (przejść T ➔ T+1: **{total_rows - 1}**).")
+
+# 4. Przeliczanie pozycji dla Tabeli 1
+combo_appearances = defaultdict(list)
+
+for idx in range(total_rows - 1):
+    curr_nums = target_data.iloc[idx]["numbers_list"]
+    next_set = target_data.iloc[idx + 1]["numbers_set"]
+    
+    hits = [i + 1 for i, n in enumerate(curr_nums) if n in next_set]
+    
+    if len(hits) >= k_target:
+        for combo in combinations(hits, k_target):
+            combo_appearances[combo].append(idx)
+
+# 5. Generowanie statystyk odstępów dla Tabeli 1
+results = []
+for combo, indices in combo_appearances.items():
+    cnt = len(indices)
+    if cnt >= 2:
+        gaps = [indices[i+1] - indices[i] for i in range(len(indices)-1)]
+        min_g = min(gaps)
+        max_g = max(gaps)
+        avg_g = round(sum(gaps) / len(gaps), 1)
+    elif cnt == 1:
+        min_g, max_g, avg_g = "-", "-", "-"
+    else:
+        continue
+
+    results.append({
+        f"Zestaw {k_target} pozycji": ", ".join(f"Poz. {p:02d}" for p in combo),
+        "Ilość trafień": cnt,
+        "Odstęp minimalny": min_g,
+        "Odstęp średni": avg_g,
+        "Odstęp maksymalny": max_g,
+        "raw_count": cnt
+    })
+
+df_res = pd.DataFrame(results)
+
+if not df_res.empty:
+    df_res = df_res.sort_values(by="raw_count", ascending=False).drop(columns=["raw_count"])
+    st.dataframe(df_res, use_container_width=True, hide_index=True)
+else:
+    st.warning("Brak danych do wyświetlenia.")
+
+
+# =====================================================================
+# DRUGA TABELA: SZCZEGÓŁOWA SPRAWDZARKA WYBRANYCH POZYCJI
+# =====================================================================
+st.divider()
+st.subheader("🎯 Sprawdzarka dowolnego zestawu 2 lub 3 pozycji (Odstępy, Dni i Oczekiwanie)")
+
+available_positions = [f"Poz. {i:02d}" for i in range(1, 21)]
+selected_pos_labels = st.multiselect(
+    "Wybierz 2 lub 3 pozycje do zbadania:",
+    options=available_positions,
+    default=["Poz. 09", "Poz. 17"],
+    max_selections=3,
+    help="Możesz wybrać 2 pozycje (np. 9 i 17) albo dobrać trzecią pozycję.",
+    key="pos_multiselect_checker"
+)
+
+if len(selected_pos_labels) < 2:
+    st.info("Wybierz co najmniej 2 pozycje, aby rozpocząć analizę.")
+else:
+    # Zamiana etykiet 'Poz. 09' na indeksy 1-based (np. 9)
+    selected_indices = [int(p.replace("Poz. ", "")) for p in selected_pos_labels]
+    
+    occurrences = []
+    
+    # Korzystamy z tego samego target_data (zgodnego z wybranym wyżej zakresem 300/500/1000)
+    for idx in range(total_rows - 1):
+        curr_row = target_data.iloc[idx]
+        next_set = target_data.iloc[idx + 1]["numbers_set"]
+        nums = curr_row["numbers_list"]
+        
+        # Sprawdzamy czy WSZYSTKIE wybrane pozycje dały biały kwadrat w T+1
+        all_hit = True
+        hit_details = {}
+        for pos_num in selected_indices:
+            ball = nums[pos_num - 1]
+            if ball in next_set:
+                hit_details[f"Kula Poz. {pos_num:02d}"] = ball
+            else:
+                all_hit = False
+                break
+                
+        if all_hit:
+            hit_record = {
+                "idx": idx,
+                "draw_id": curr_row["draw_id"],
+                "draw_time": curr_row.get("draw_time", "--:--"),
+                "total_squares": sum(1 for n in nums if n in next_set)
+            }
+            hit_record.update(hit_details)
+            occurrences.append(hit_record)
+            
+    # Obliczanie osi czasu i odstępów
+    timeline = []
+    gaps_draws = []
+    
+    for i in range(len(occurrences)):
+        curr = occurrences[i]
+        if i > 0:
+            prev = occurrences[i - 1]
+            gap_draws = curr["idx"] - prev["idx"]
+            gaps_draws.append(gap_draws)
+            gap_days = round(gap_draws / 260.0, 2)  # 260 losowań Keno na dobę
+            gap_draws_str = str(gap_draws)
+            gap_days_str = f"~{gap_days:.2f} dn."
+        else:
+            gap_draws_str = "— (pierwsze)"
+            gap_days_str = "— (start)"
+            
+        row_entry = {
+            "Nr trafienia": i + 1,
+            "Losowanie bazowe": f"#{curr['draw_id']} ({curr['draw_time']})",
+            "Łącznie kwadratów": curr["total_squares"]
+        }
+        for pos_num in selected_indices:
+            row_entry[f"Kula Poz. {pos_num:02d}"] = curr[f"Kula Poz. {pos_num:02d}"]
+            
+        row_entry["Odstęp (losowań)"] = gap_draws_str
+        row_entry["Odstęp (dni)"] = gap_days_str
+        timeline.append(row_entry)
+        
+    df_timeline = pd.DataFrame(timeline)
+    
+    # Obliczanie aktualnego oczekiwania od ostatniego trafienia
+    last_evaluated_idx = total_rows - 2
+    
+    if occurrences:
+        last_hit_idx = occurrences[-1]["idx"]
+        current_wait_draws = last_evaluated_idx - last_hit_idx
+        current_wait_days = round(current_wait_draws / 260.0, 2)
+        last_hit_label = f"#{occurrences[-1]['draw_id']} ({occurrences[-1]['draw_time']})"
+    else:
+        current_wait_draws = max(0, total_rows - 1)
+        current_wait_days = round(current_wait_draws / 260.0, 2)
+        last_hit_label = "Brak w wybranym zakresie"
+
+    k_name = ", ".join(selected_pos_labels)
+    st.write(f"### Zestaw: **{k_name}**")
+    
+    # Kafelki z metrykami (5 kolumn)
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Łącznie trafień", f"{len(df_timeline)} razy")
+    
+    if gaps_draws:
+        avg_gap = round(sum(gaps_draws) / len(gaps_draws), 1)
+        avg_days = round(avg_gap / 260.0, 2)
+        diff_from_avg = round(current_wait_draws - avg_gap, 1)
+        
+        m2.metric("Odstęp minimalny", f"{min(gaps_draws)} los.")
+        m3.metric("Odstęp średni", f"{avg_gap} los. (~{avg_days} dn.)")
+        m4.metric("Odstęp maksymalny", f"{max(gaps_draws)} los.")
+        m5.metric(
+            "Aktualne oczekiwanie",
+            f"{current_wait_draws} los. (~{current_wait_days} dn.)",
+            delta=f"{diff_from_avg:+} los. vs średnia",
+            delta_color="inverse"
+        )
+    else:
+        m2.metric("Odstęp minimalny", "—")
+        m3.metric("Odstęp średni", "—")
+        m4.metric("Odstęp maksymalny", "—")
+        m5.metric("Aktualne oczekiwanie", f"{current_wait_draws} losowań")
+
+    st.caption(f"ℹ️ Ostatnie trafienie zestawu: **{last_hit_label}** | Ostatnie zbadane losowanie w bazie: **#{target_data.iloc[-1]['draw_id']}**")
+    
+    st.write("")
+    if not df_timeline.empty:
+        # Odwracamy kolejność tabeli, aby na samej górze widzieć najświeższe trafienia
+        st.dataframe(df_timeline.iloc[::-1].reset_index(drop=True), use_container_width=True, hide_index=True)
+    else:
+        st.warning(f"Zestaw {k_name} nie trafił wspólnie ani razu w wybranym zakresie losowań.")
 
