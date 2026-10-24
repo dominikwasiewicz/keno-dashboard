@@ -1044,9 +1044,9 @@ available_positions = [f"Poz. {i:02d}" for i in range(1, 21)]
 selected_pos_labels = st.multiselect(
     "Wybierz 2 lub 3 pozycje do zbadania:",
     options=available_positions,
-    default=["Poz. 09", "Poz. 17"],
+    default=["Poz. 02", "Poz. 09"],
     max_selections=3,
-    help="Możesz wybrać 2 pozycje (np. 9 i 17) albo dobrać trzecią pozycję.",
+    help="Możesz wybrać 2 pozycje (np. 2 i 9) albo dobrać trzecią pozycję.",
     key="pos_multiselect_checker"
 )
 
