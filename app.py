@@ -599,7 +599,7 @@ with col_tk2:
         "Ile losowań (wierszy) sprawdzić i wyświetlić w tabeli:",
         min_value=10,
         max_value=max_available_test,
-        value=min(25, max_available_test),
+        value=min(20, max_available_test),
         step=5,
         key="rolling_test_steps"
     )
