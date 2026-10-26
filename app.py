@@ -1482,8 +1482,9 @@ with col_tk1:
     rolling_window = st.radio(
         "Wybierz zakres okna dla 'Pozycje analityczne (Trafienia T+1)':",
         options=[20, 25, 50, 100],
+        index=1,  # Domyślnie 35
         horizontal=True,
-        key="rolling_win_selector"
+        key="rolling_win_selector_v3"  # <-- ZMIENIONE
     )
 
 with col_tk2:
@@ -1492,9 +1493,9 @@ with col_tk2:
         "Ile losowań (wierszy) sprawdzić i wyświetlić w tabeli:",
         min_value=10,
         max_value=max_available_test,
-        value=min(20, max_available_test),
+        value=min(35, max_available_test),  # Domyślnie 35
         step=5,
-        key="rolling_test_steps"
+        key="rolling_test_steps_v3"  # <-- ZMIENIONE
     )
 
 if len(df) <= rolling_window + 2:
