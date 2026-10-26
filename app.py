@@ -908,7 +908,7 @@ with col_tk1:
         options=[20, 25, 50, 100],
         index=1,  # Domyślnie 25
         horizontal=True,
-        key="rolling_win_selector"
+        key="rolling_win_selector_v2"  # <-- ZMIENIONE
     )
 
 with col_tk2:
@@ -919,7 +919,7 @@ with col_tk2:
         max_value=max_available_test,
         value=min(25, max_available_test),  # Domyślnie 25
         step=5,
-        key="rolling_test_steps"
+        key="rolling_test_steps_v2"  # <-- ZMIENIONE
     )
 
 if len(df) <= rolling_window + 2:
