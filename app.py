@@ -687,13 +687,13 @@ last_draw = df.iloc[-1]
 numbers_str_last = ", ".join(f"{n:02d}" for n in last_draw["numbers_list"])
 st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['draw_time']}**) | Liczby: **{numbers_str_last}**")
 
-# Wybór okna analizy
-base_ranges = [10, 15, 20, 25, 35, 50, 50, 500]
+# Wybór okna analizy (domyślnie ustawione na 25)
+base_ranges = [10, 15, 20, 25, 35, 50, 300, 500]
 available_options = [opt for opt in base_ranges if opt <= len(df)]
 if not available_options:
     available_options = [len(df)]
 
-default_index = available_options.index(25) if 20 in available_options else 0
+default_index = available_options.index(25) if 25 in available_options else 0
 
 selected_window = st.radio(
     "Wybierz zakres analizy losowań:",
@@ -906,6 +906,7 @@ with col_tk1:
     rolling_window = st.radio(
         "Wybierz zakres okna dla 'Pozycje analityczne (Trafienia T+1)':",
         options=[20, 25, 50, 100],
+        index=1,  # Domyślnie 25
         horizontal=True,
         key="rolling_win_selector"
     )
@@ -916,7 +917,7 @@ with col_tk2:
         "Ile losowań (wierszy) sprawdzić i wyświetlić w tabeli:",
         min_value=10,
         max_value=max_available_test,
-        value=min(20, max_available_test),
+        value=min(25, max_available_test),  # Domyślnie 25
         step=5,
         key="rolling_test_steps"
     )
@@ -1147,7 +1148,6 @@ else:
             use_container_width=True,
             height=640
         )
-
 
 
 
