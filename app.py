@@ -1481,7 +1481,7 @@ col_tk1, col_tk2 = st.columns([1, 1])
 with col_tk1:
     rolling_window = st.radio(
         "Wybierz zakres okna dla 'Pozycje analityczne (Trafienia T+1)':",
-        options=[20, 25, 50, 100],
+        options=[20, 25, 35, 50, 100],
         index=1,  # Domyślnie 35
         horizontal=True,
         key="rolling_win_selector_v3"  # <-- ZMIENIONE
