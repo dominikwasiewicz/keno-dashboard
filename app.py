@@ -562,7 +562,7 @@ else:
             df_roll_pos,
             column_config={
                 "Pozycja w tabeli": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
-                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="medium"),
+                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="small"),
                 "Teraz w grze": st.column_config.NumberColumn("Ostatnia (Teraz)", width="small"),
                 "Z pozycji": st.column_config.TextColumn("Skąd (Oryg.)", width="small"),
             },
@@ -1140,7 +1140,7 @@ else:
             df_roll_pos,
             column_config={
                 "Pozycja w tabeli": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
-                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="medium"),
+                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="small"),
                 "Teraz w grze": st.column_config.NumberColumn("Ostatnia (Teraz)", width="small"),
                 "Z pozycji": st.column_config.TextColumn("Skąd (Oryg.)", width="small"),
             },
@@ -1716,7 +1716,7 @@ else:
             df_roll_pos,
             column_config={
                 "Pozycja w tabeli": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
-                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="medium"),
+                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="small"),
                 "Teraz w grze": st.column_config.NumberColumn("Ostatnia (Teraz)", width="small"),
                 "Z pozycji": st.column_config.TextColumn("Skąd (Oryg.)", width="small"),
             },
