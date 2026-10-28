@@ -332,7 +332,7 @@ with col_tk1:
     rolling_options = [opt for opt in [10, 15, 20, 25, 30, 35, 50, 100] if opt <= len(df)]
     if not rolling_options:
         rolling_options = [len(df)]
-    default_roll_idx = rolling_options.index(15) if 15 in rolling_options else 0
+    default_roll_idx = rolling_options.index(10) if 10 in rolling_options else 0
 
     rolling_window = st.radio(
         "Wybierz zakres okna dla 'Pozycje analityczne (Trafienia T+1)':",
