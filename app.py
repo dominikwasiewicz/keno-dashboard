@@ -329,7 +329,7 @@ st.caption(
 col_tk1, col_tk2 = st.columns([1.2, 1])
 
 with col_tk1:
-    rolling_options = [opt for opt in [15, 20, 25, 30, 35, 50, 100] if opt <= len(df)]
+    rolling_options = [opt for opt in [10, 15, 20, 25, 30, 35, 50, 100] if opt <= len(df)]
     if not rolling_options:
         rolling_options = [len(df)]
     default_roll_idx = rolling_options.index(15) if 15 in rolling_options else 0
