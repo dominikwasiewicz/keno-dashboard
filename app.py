@@ -288,7 +288,7 @@ def render_keno_section(window_size):
     test_steps = st.slider(
         f"Liczba wierszi do przetestowania (dla okna {window_size}):",
         min_value=5,
-        max_value=min(100, max_avail_test),
+        max_value=min(560, max_avail_test),
         value=min(window_size * 2, max_avail_test),
         step=5,
         key=f"test_steps_slider_{window_size}"
