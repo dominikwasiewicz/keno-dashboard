@@ -23,7 +23,7 @@ def fetch_keno_full_history(target_draws=1100):
     
     urls = ["https://wynikikeno.pl/"]
     now = datetime.datetime.now()
-    for days_back in range(10, 15, 20, 25):
+    for days_back in range(0, 6):
         target_date = now - datetime.timedelta(days=days_back)
         formatted_date = target_date.strftime("%d-%m-%Y")
         urls.append(f"https://wynikikeno.pl/losowanie/{formatted_date}")
@@ -712,7 +712,6 @@ def render_keno_cascade(section_id=1, default_top_val=20):
 # WYWOŁANIE GŁÓWNEJ KASKADY (Domyślnie 20 dla Tabeli 1)
 # =====================================================================
 render_keno_cascade(section_id=1, default_top_val=20)
-
 
 
 
