@@ -56,34 +56,32 @@ def fetch_keno_full_history(target_draws=1100):
                 time_m = re.search(r"\b(\d{1,2}:\d{2})\b", text)
                 draw_time = time_m.group(1) if time_m else "--:--"
                 
-                # KLUCZOWA NAPRAWA: Bierzemy tekst WYŁĄCZNIE po słowie "mnożnik",
-                # dzięki czemu odrzucamy godzinę (np. 18:01) i nagłówek z początku wiersza.
+                # Wycinamy tekst po słowie "mnożnik", żeby odrzucić godzinę i nagłówki
                 mnoznik_m = re.search(r"mnożnik\s*x\d+\.?", text, re.I)
                 pure_numbers_text = text[mnoznik_m.end():] if mnoznik_m else text[nr_m.end():]
                 
                 found_nums = re.findall(r"\b([0-9]{1,2})\b", pure_numbers_text)
                 valid_nums = [int(n) for n in found_nums if 1 <= int(n) <= 70]
                 
-                # Zbieramy unikalne liczby zachowując ich poprawną kolejność
+                # Zachowujemy oryginalną kolejność liczb ze strony (BEZ sortowania rosnącego!)
                 unique_nums = []
                 for n in valid_nums:
                     if n not in unique_nums:
                         unique_nums.append(n)
                         
-                # Keno ma zawsze dokładnie 20 unikalnych liczb w losowaniu
                 if len(unique_nums) >= 20:
-                    keno_sorted = sorted(unique_nums[:20]) # Bierzemy pierwsze 20 i porządkujemy rosnąco
+                    keno_extracted = unique_nums[:20]  # Dokładnie 20 liczb w kolejności ze strony
                     
-                    if len(keno_sorted) == 20:
+                    if len(keno_extracted) == 20:
                         seen_ids.add(draw_id)
                         rec = {
                             "draw_id": draw_id,
                             "draw_time": draw_time,
-                            "numbers_list": keno_sorted,
-                            "numbers_set": set(keno_sorted)
+                            "numbers_list": keno_extracted,          # Oryginalna kolejność do wyświetlania w tabeli
+                            "numbers_set": set(keno_extracted)
                         }
                         for i in range(20):
-                            rec[f"pos_{i+1}"] = keno_sorted[i]
+                            rec[f"pos_{i+1}"] = keno_extracted[i]
                         records.append(rec)
                     
         except Exception:
@@ -96,6 +94,8 @@ def fetch_keno_full_history(target_draws=1100):
         return df, f"🟢 Załadowano {len(df)} autentycznych losowań Keno"
 
     return pd.DataFrame(), "Nie udało się pobrać danych archiwalnych."
+
+
 # --- POBIERANIE DANYCH ---
 df, status_msg = fetch_keno_full_history(target_draws=1100)
 
