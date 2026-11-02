@@ -56,17 +56,12 @@ def fetch_keno_full_history(target_draws=1100):
                 time_m = re.search(r"\b(\d{1,2}:\d{2})\b", text)
                 draw_time = time_m.group(1) if time_m else "--:--"
                 
-                # Precyzyjne wycięcie tekstu wyłącznie pomiędzy numerem losowania a słowem "mnożnik"
-                match_start = re.search(r"#\s*\d{6,8}", text)
-                match_end = re.search(r"mnożnik", text, re.I)
+                # KLUCZOWA NAPRAWA: Usuwamy z tekstu godzinę (np. 19:50) oraz numer ID (#1520380),
+                # aby ich cyfry nie zostały omyłkowo uznane za kule Keno.
+                clean_text = re.sub(r'\b\d{1,2}:\d{2}\b', '', text)
+                clean_text = re.sub(r'#\s*\d+', '', clean_text)
                 
-                if match_start and match_end and match_start.end() < match_end.start():
-                    balls_text = text[match_start.end():match_end.start()]
-                else:
-                    mnoznik_m = re.search(r"mnożnik\s*x\d+\.?", text, re.I)
-                    balls_text = text[nr_m.end():mnoznik_m.start()] if (mnoznik_m and nr_m.end() < mnoznik_m.start()) else text[nr_m.end():]
-                
-                found_nums = re.findall(r"\b([0-9]{1,2})\b", balls_text)
+                found_nums = re.findall(r'\b([0-9]{1,2})\b', clean_text)
                 valid_nums = [int(n) for n in found_nums if 1 <= int(n) <= 70]
                 
                 unique_nums = []
@@ -124,7 +119,7 @@ st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['d
 def render_keno_cascade(section_id=1, default_top_val=20):
     st.divider()
     
-    # 1. Konfiguracja dla Pierwszej Tabeli (domyślnie 20, z opcjami)
+    # 1. Konfiguracja dla Pierwszej Tabeli (pełny wybór: 15, 20, 25, 30, 50, 100)
     top_ranges = [15, 20, 25, 30, 50, 100]
     available_top = [opt for opt in top_ranges if opt <= len(df)]
     if not available_top:
