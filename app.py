@@ -38,51 +38,63 @@ def fetch_keno_full_history(target_draws=1100):
             resp.encoding = "utf-8"
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            elements = soup.find_all(["li", "p", "div", "tr"])
-            for el in elements:
-                text = el.get_text(" ", strip=True)
-                
-                if "#" not in text or "mnożnik" not in text.lower():
-                    continue
-                    
-                nr_m = re.search(r"#\s*(\d{6,8})", text)
-                if not nr_m:
-                    continue
-                draw_id = nr_m.group(1)
-                
+            # Pobieramy pełny tekst strony rozdzielony spacjami
+            full_text = soup.get_text(" ", strip=True)
+            
+            # Znajdujemy wszystkie wystąpienia numerów losowań (#1520364 itd.)
+            id_matches = list(re.finditer(r"#\s*(\d{6,8})", full_text))
+            
+            for idx_m, match in enumerate(id_matches):
+                draw_id = match.group(1)
                 if draw_id in seen_ids:
                     continue
-                    
-                time_m = re.search(r"\b(\d{1,2}:\d{2})\b", text)
-                draw_time = time_m.group(1) if time_m else "--:--"
                 
-                # KLUCZOWA NAPRAWA: Usuwamy z tekstu godzinę (np. 19:50) oraz numer ID (#1520380),
-                # aby ich cyfry nie zostały omyłkowo uznane za kule Keno.
-                clean_text = re.sub(r'\b\d{1,2}:\d{2}\b', '', text)
-                clean_text = re.sub(r'#\s*\d+', '', clean_text)
+                # Szukamy godziny losowania tuż przed numerem #ID (do 40 znaków wstecz)
+                prefix_start = max(0, match.start() - 40)
+                prefix_text = full_text[prefix_start:match.start()]
+                time_ matches = re.findall(r"\b(\d{1,2}:\d{2})\b", prefix_text)
+                draw_time = time_matches[-1] if time_matches else "--:--"
                 
-                found_nums = re.findall(r'\b([0-9]{1,2})\b', clean_text)
+                # Wycinamy fragment tekstu należący TYLKO do tego jednego losowania
+                block_start = match.end()
+                block_end = id_matches[idx_m + 1].start() if (idx_m + 1 < len(id_matches)) else min(len(full_text), block_start + 450)
+                block_text = full_text[block_start:block_end]
+                
+                # KLUCZOWA NAPRAWA: Odcinamy wszystko do słowa "Mnożnik x..." włącznie!
+                # Dzięki temu cyfra mnożnika (x1, x2, x3, x4, x10) NIGDY nie wejdzie do puli kul!
+                mnoznik_m = re.search(r"mnożnik\s*[x×✕\*]?\s*\d+", block_text, re.I)
+                if mnoznik_m:
+                    balls_text = block_text[mnoznik_m.end():]
+                else:
+                    # Dodatkowe zabezpieczenie: usuwamy każde "x1", "x2", "x10" oraz godziny
+                    balls_text = re.sub(r"\b[x×✕]\s*\d+\b", "", block_text, flags=re.I)
+                
+                # Usuwamy ewentualną godzinę następnego losowania z końca bloku
+                balls_text = re.sub(r"\b\d{1,2}:\d{2}\b", "", balls_text)
+                
+                # Wyciągamy liczby z przedziału 1-70
+                found_nums = re.findall(r"\b([0-9]{1,2})\b", balls_text)
                 valid_nums = [int(n) for n in found_nums if 1 <= int(n) <= 70]
                 
                 unique_nums = []
                 for n in valid_nums:
                     if n not in unique_nums:
                         unique_nums.append(n)
+                    if len(unique_nums) == 20:
+                        break
                         
-                if len(unique_nums) >= 20:
-                    keno_sorted = sorted(unique_nums[:20])  # Keno wyniki są zawsze posortowane rosnąco
-                    
-                    if len(keno_sorted) == 20:
-                        seen_ids.add(draw_id)
-                        rec = {
-                            "draw_id": draw_id,
-                            "draw_time": draw_time,
-                            "numbers_list": keno_sorted,
-                            "numbers_set": set(keno_sorted)
-                        }
-                        for i in range(20):
-                            rec[f"pos_{i+1}"] = keno_sorted[i]
-                        records.append(rec)
+                if len(unique_nums) == 20:
+                    seen_ids.add(draw_id)
+                    keno_sorted = sorted(unique_nums)
+                    rec = {
+                        "draw_id": draw_id,
+                        "draw_time": draw_time,
+                        "numbers_list": keno_sorted,
+                        "numbers_set": set(keno_sorted)
+                    }
+                    for i in range(20):
+                        rec[f"pos_{i+1}"] = keno_sorted[i]
+                    records.append(rec)
                     
         except Exception:
             continue
@@ -307,7 +319,7 @@ def render_keno_cascade(section_id=1, default_top_val=20):
     rolling_window = int(selected_window)
 
     st.subheader(f"🟦 2. Druga Tabela (Niebieska): Sprawdzenie 15 losowań wg kolumny 'Ostatnia'")
-    st.caption(f"Przenosi wartości z kolumny 'Ostatnia' z Pierwszej Tabeli (okno {rolling_window}) i sprawdza dokładnie **15 losowań**[cite: 15].")
+    st.caption(f"Przenosi wartości z kolumny 'Ostatnia' z Pierwszej Tabeli (okno {rolling_window}) i sprawdza dokładnie **15 losowań**.")
 
     all_sets = df["numbers_set"].tolist()
     all_lists = df["numbers_list"].tolist()
@@ -707,7 +719,6 @@ def render_keno_cascade(section_id=1, default_top_val=20):
 # WYWOŁANIE GŁÓWNEJ KASKADY (Domyślnie 20 dla Tabeli 1)
 # =====================================================================
 render_keno_cascade(section_id=1, default_top_val=20)
-
 
 
 
