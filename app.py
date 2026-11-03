@@ -52,7 +52,7 @@ def fetch_keno_full_history(target_draws=1100):
                 # Szukamy godziny losowania tuż przed numerem #ID (do 40 znaków wstecz)
                 prefix_start = max(0, match.start() - 40)
                 prefix_text = full_text[prefix_start:match.start()]
-                time_ matches = re.findall(r"\b(\d{1,2}:\d{2})\b", prefix_text)
+                time_matches = re.findall(r"\b(\d{1,2}:\d{2})\b", prefix_text)
                 draw_time = time_matches[-1] if time_matches else "--:--"
                 
                 # Wycinamy fragment tekstu należący TYLKO do tego jednego losowania
