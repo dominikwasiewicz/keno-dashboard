@@ -5,8 +5,6 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import datetime
-from collections import defaultdict
-from itertools import combinations
 
 st.set_page_config(page_title="Panel Analityczny Keno (Live)", layout="wide")
 
@@ -38,10 +36,7 @@ def fetch_keno_full_history(target_draws=1100):
             resp.encoding = "utf-8"
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            # Pobieramy pełny tekst strony rozdzielony spacjami
             full_text = soup.get_text(" ", strip=True)
-            
-            # Znajdujemy wszystkie wystąpienia numerów losowań (#1520364 itd.)
             id_matches = list(re.finditer(r"#\s*(\d{6,8})", full_text))
             
             for idx_m, match in enumerate(id_matches):
@@ -49,30 +44,23 @@ def fetch_keno_full_history(target_draws=1100):
                 if draw_id in seen_ids:
                     continue
                 
-                # Szukamy godziny losowania tuż przed numerem #ID (do 40 znaków wstecz)
                 prefix_start = max(0, match.start() - 40)
                 prefix_text = full_text[prefix_start:match.start()]
                 time_matches = re.findall(r"\b(\d{1,2}:\d{2})\b", prefix_text)
                 draw_time = time_matches[-1] if time_matches else "--:--"
                 
-                # Wycinamy fragment tekstu należący TYLKO do tego jednego losowania
                 block_start = match.end()
                 block_end = id_matches[idx_m + 1].start() if (idx_m + 1 < len(id_matches)) else min(len(full_text), block_start + 450)
                 block_text = full_text[block_start:block_end]
                 
-                # KLUCZOWA NAPRAWA: Odcinamy wszystko do słowa "Mnożnik x..." włącznie!
-                # Dzięki temu cyfra mnożnika (x1, x2, x3, x4, x10) NIGDY nie wejdzie do puli kul!
                 mnoznik_m = re.search(r"mnożnik\s*[x×✕\*]?\s*\d+", block_text, re.I)
                 if mnoznik_m:
                     balls_text = block_text[mnoznik_m.end():]
                 else:
-                    # Dodatkowe zabezpieczenie: usuwamy każde "x1", "x2", "x10" oraz godziny
                     balls_text = re.sub(r"\b[x×✕]\s*\d+\b", "", block_text, flags=re.I)
                 
-                # Usuwamy ewentualną godzinę następnego losowania z końca bloku
                 balls_text = re.sub(r"\b\d{1,2}:\d{2}\b", "", balls_text)
                 
-                # Wyciągamy liczby z przedziału 1-70
                 found_nums = re.findall(r"\b([0-9]{1,2})\b", balls_text)
                 valid_nums = [int(n) for n in found_nums if 1 <= int(n) <= 70]
                 
@@ -110,7 +98,7 @@ def fetch_keno_full_history(target_draws=1100):
 # --- POBIERANIE DANYCH ---
 df, status_msg = fetch_keno_full_history(target_draws=1100)
 
-st.title("🎯 Panel Analityczny Keno (Kaskada: 20 ⬜ ➔ 15 🟦 ➔ 10/12/15 🟩)")
+st.title("🎯 Panel Analityczny Keno (Stabilizacja Pozycji ⬜ ➔ 🟦)")
 
 if df.empty:
     st.error(status_msg)
@@ -126,12 +114,11 @@ st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['d
 
 
 # =====================================================================
-# FUNKCJA GENERUJĄCA KASKADĘ
+# FUNKCJA GENERUJĄCA SEKCJĘ (TABELA 1 + STABILIZOWANA TABELA 2 NIEBIESKA)
 # =====================================================================
-def render_keno_cascade(section_id=1, default_top_val=20):
+def render_keno_section(section_id=1, default_top_val=20):
     st.divider()
     
-    # 1. Konfiguracja dla Pierwszej Tabeli (pełny wybór: 15, 20, 25, 30, 50, 100)
     top_ranges = [15, 20, 25, 30, 50, 100]
     available_top = [opt for opt in top_ranges if opt <= len(df)]
     if not available_top:
@@ -152,7 +139,7 @@ def render_keno_cascade(section_id=1, default_top_val=20):
     col_draws, col_stats = st.columns([1.6, 0.9], gap="large")
     
     # -----------------------------------------------------------------
-    # POZIOM 1: TABELA LOSOWAŃ KENO (BIAŁE KWADRATY) + ANALIZA POZYCJI
+    # POZIOM 1: TABELA LOSOWAŃ KENO (BIAŁE KWADRATY I CZERWONE KÓŁKA)
     # -----------------------------------------------------------------
     with col_draws:
         st.subheader(f"📋 1. Tabela Losowań Keno (ostatnie {selected_window})")
@@ -312,121 +299,158 @@ def render_keno_cascade(section_id=1, default_top_val=20):
         )
 
     # -----------------------------------------------------------------
-    # POZIOM 2: DRUGA TABELA (NIEBIESKA 🟦) — SPRAWDZA SZTYWNO 15 LOSOWAŃ
+    # POZIOM 2: DRUGA TABELA (NIEBIESKA 🟦) — ZACHOWYWANIE POZYCJI
     # -----------------------------------------------------------------
     st.divider()
-    blue_steps = 15
+    st.subheader("🟦 2. Tabela Niebieska: Śledzenie pozycji bez przemieszania")
+    
+    col_opt1, col_opt2 = st.columns([1.8, 1])
+    with col_opt1:
+        stabilization_mode = st.radio(
+            "Wybierz sposób utrzymania pozycji w Tabeli Niebieskiej:",
+            options=[
+                "Tryb B (Stos liderów): Nowy lider wchodzi na pozycję, poprzedni zostaje pod nim (z etykietą P..)",
+                "Tryb A (Stałe kolumny): Pozycje zakotwiczone na starcie zostają w swojej kolumnie do końca"
+            ],
+            index=0,
+            key=f"stab_mode_{section_id}"
+        )
+    with col_opt2:
+        blue_steps = st.radio(
+            "Liczba losowań w Tabeli Niebieskiej:",
+            options=[15, 20, 25, 30],
+            index=0,
+            horizontal=True,
+            key=f"blue_steps_{section_id}"
+        )
+
     rolling_window = int(selected_window)
-
-    st.subheader(f"🟦 2. Druga Tabela (Niebieska): Sprawdzenie 15 losowań wg kolumny 'Ostatnia'")
-    st.caption(f"Przenosi wartości z kolumny 'Ostatnia' z Pierwszej Tabeli (okno {rolling_window}) i sprawdza dokładnie **15 losowań**.")
-
     all_sets = df["numbers_set"].tolist()
     all_lists = df["numbers_list"].tolist()
     all_ids = df["draw_id"].tolist()
     all_times = df["draw_time"].tolist()
     total_df_rows = len(df)
 
-    max_green_steps = 15
-    earliest_t_needed = max(rolling_window - 1, total_df_rows - 1 - blue_steps - max_green_steps)
+    start_idx_blue = max(rolling_window - 1, total_df_rows - 1 - blue_steps)
 
-    blue_row_data_by_t = {}
-
-    for t in range(earliest_t_needed, total_df_rows):
-        is_latest = (t == total_df_rows - 1)
-        if is_latest:
-            pos_ranking_sorted = []
-            for _, r_row in df_pos_stats_full.iterrows():
-                pos_ranking_sorted.append({
+    # Funkcja pomocnicza wyliczająca ranking 1..20 w dowolnym punkcie t
+    def get_ranking_at_step(t_idx):
+        if t_idx == total_df_rows - 1:
+            return [
+                {
                     "orig_pos": int(r_row["orig_pos_num"]),
                     "raw_hits": int(r_row["raw_hits"]),
-                    "ostatnia_val": int(r_row["Ostatnia"])
-                })
-        else:
-            win_start = t - rolling_window + 1
-            win_end = t + 1
-            win_sets = all_sets[win_start:win_end]
-            win_lists = all_lists[win_start:win_end]
-            total_trans = len(win_sets) - 1
-            nums_t = all_lists[t]
-            
-            pos_temp = []
-            for i in range(1, 21):
-                p_idx = i - 1
-                repeat_t1_count = sum(1 for k in range(total_trans) if win_lists[k][p_idx] in win_sets[k + 1])
-                pos_temp.append({
-                    "orig_pos": i,
-                    "raw_hits": repeat_t1_count,
-                    "ostatnia_val": nums_t[p_idx]
-                })
-                
-            df_rank_step = pd.DataFrame(pos_temp).sort_values(
-                by="raw_hits", ascending=False, kind="mergesort"
-            ).reset_index(drop=True)
-            pos_ranking_sorted = df_rank_step.to_dict("records")
-
-        next_draw_set = all_sets[t + 1] if not is_latest else set()
+                    "ball": int(r_row["Ostatnia"])
+                }
+                for _, r_row in df_pos_stats_full.iterrows()
+            ]
+        win_start = t_idx - rolling_window + 1
+        win_end = t_idx + 1
+        win_sets = all_sets[win_start:win_end]
+        win_lists = all_lists[win_start:win_end]
+        total_trans = len(win_sets) - 1
+        nums_t = all_lists[t_idx]
         
-        row_items = []
-        for rank_idx, item in enumerate(pos_ranking_sorted):
-            ball_val = int(item["ostatnia_val"])
-            hit_blue = (ball_val in next_draw_set) if not is_latest else False
-            row_items.append({
-                "blue_pos": rank_idx + 1,
-                "ball": ball_val,
-                "orig_pos": int(item["orig_pos"]),
-                "t1_score": int(item["raw_hits"]),
-                "hit_blue": hit_blue
+        pos_temp = []
+        for i in range(1, 21):
+            p_idx = i - 1
+            repeat_t1_count = sum(1 for k in range(total_trans) if win_lists[k][p_idx] in win_sets[k + 1])
+            pos_temp.append({
+                "orig_pos": i,
+                "raw_hits": repeat_t1_count,
+                "ball": nums_t[p_idx]
             })
-        blue_row_data_by_t[t] = row_items
+        df_step = pd.DataFrame(pos_temp).sort_values(by="raw_hits", ascending=False, kind="mergesort").reset_index(drop=True)
+        return df_step.to_dict("records")
 
-    start_idx_blue = max(rolling_window - 1, total_df_rows - 1 - blue_steps)
+    # Jeśli wybrano Tryb A: ustalamy kolejność pozycji raz w punkcie startowym (start_idx_blue)
+    anchored_order = [item["orig_pos"] for item in get_ranking_at_step(start_idx_blue)]
+
     rolling_rows_html = []
-    rank_pos_blue_hits = {r: 0 for r in range(1, 21)}
-    latest_rank_numbers = {}
-    latest_rank_orig_pos = {}
+    col_blue_hits = {r: 0 for r in range(1, 21)}
+    orig_pos_blue_hits = {p: 0 for p in range(1, 21)}
+    orig_pos_appearances = {p: 0 for p in range(1, 21)}
+    latest_col_data = {}
     evaluated_draws_count = 0
 
-    headers_rolling_html = "".join([
-        f"<th style='padding: 6px 2px; text-align: center; color: #4da6ff; font-size: 11px; width: 30px; border-right: 1px solid #2a2e39;'>{col_i}</th>" 
-        for col_i in range(1, 21)
-    ])
+    is_mode_b = stabilization_mode.startswith("Tryb B")
+
+    if is_mode_b:
+        headers_rolling_html = "".join([
+            f"<th style='padding: 6px 2px; text-align: center; color: #4da6ff; font-size: 11px; width: 42px; border-right: 1px solid #2a2e39;'>M.{col_i}</th>" 
+            for col_i in range(1, 21)
+        ])
+    else:
+        headers_rolling_html = "".join([
+            f"<th title='Zakotwiczona oryginalna Poz. {anchored_order[col_i-1]:02d}' style='padding: 6px 2px; text-align: center; color: #4da6ff; font-size: 11px; width: 38px; border-right: 1px solid #2a2e39;'>"
+            f"{col_i}<br><span style='font-size:9px; color:#8a94a6;'>(P{anchored_order[col_i-1]:02d})</span></th>" 
+            for col_i in range(1, 21)
+        ])
 
     for t in range(total_df_rows - 1, start_idx_blue - 1, -1):
         is_latest_unverified = (t == total_df_rows - 1)
-        row_items = blue_row_data_by_t[t]
+        next_draw_set = all_sets[t + 1] if not is_latest_unverified else set()
+        nums_t = all_lists[t]
 
         if not is_latest_unverified:
             evaluated_draws_count += 1
 
+        if is_mode_b:
+            # TRYB B: W każdym wierszu na pozycję 1..20 wchodzi aktualny lider tego miejsca,
+            # a poprzedni lider zostaje w wierszu pod nim (widać jego numer P.. i czy trafił w T+1)
+            step_ranking = get_ranking_at_step(t)
+        else:
+            # TRYB A: Kolumny 1..20 trzymają na stałe pozycje ustalone na starcie testu
+            step_ranking = [
+                {
+                    "orig_pos": orig_p,
+                    "raw_hits": 0,
+                    "ball": nums_t[orig_p - 1]
+                }
+                for orig_p in anchored_order
+            ]
+
         row_blue_count = 0
         cells_html = []
 
-        for item in row_items:
-            new_pos_nr = item["blue_pos"]
-            ball_val = item["ball"]
-            orig_pos = item["orig_pos"]
+        for rank_idx, item in enumerate(step_ranking):
+            col_nr = rank_idx + 1
+            ball_val = int(item["ball"])
+            orig_pos = int(item["orig_pos"])
+            pos_tag = f"<span style='font-size:8px; color:#7c8698; display:block; line-height:9px;'>P{orig_pos:02d}</span>" if is_mode_b else ""
 
             if is_latest_unverified:
-                latest_rank_numbers[new_pos_nr] = ball_val
-                latest_rank_orig_pos[new_pos_nr] = orig_pos
-                cell_content = f"<span style='color:#ffd166; font-weight:bold; font-size:11px;'>{ball_val:02d}</span>"
+                latest_col_data[col_nr] = {"ball": ball_val, "orig_pos": orig_pos}
+                cell_content = (
+                    f"<div style='display:flex; flex-direction:column; align-items:center;'>"
+                    f"<span style='color:#ffd166; font-weight:bold; font-size:11px;'>{ball_val:02d}</span>"
+                    f"{pos_tag}</div>"
+                )
             else:
-                if item["hit_blue"]:
-                    rank_pos_blue_hits[new_pos_nr] += 1
+                orig_pos_appearances[orig_pos] += 1
+                is_hit = (ball_val in next_draw_set)
+                if is_hit:
+                    col_blue_hits[col_nr] += 1
+                    orig_pos_blue_hits[orig_pos] += 1
                     row_blue_count += 1
                     cell_content = (
-                        f"<span title='Poz. 🟦 {new_pos_nr:02d} (z Poz. {orig_pos:02d}) - TRAFIONA w #{all_ids[t+1]}' "
-                        f"style='display:inline-flex; align-items:center; justify-content:center; "
-                        f"width:26px; height:26px; border:2px solid #00aaff; border-radius:4px; "
+                        f"<div title='Miejsce {col_nr} | Oryg. Poz. {orig_pos:02d} | Liczba {ball_val:02d} TRAFIONA w #{all_ids[t+1]}' "
+                        f"style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                        f"width:34px; height:28px; border:2px solid #00aaff; border-radius:4px; "
                         f"background-color:rgba(0, 170, 255, 0.35); color:#ffffff; font-weight:bold; "
                         f"font-size:11px; margin:1px; box-sizing:border-box; box-shadow: 0 0 5px rgba(0,170,255,0.6);'>"
-                        f"{ball_val:02d}</span>"
+                        f"<span style='line-height:11px;'>{ball_val:02d}</span>"
+                        f"{pos_tag}</div>"
                     )
                 else:
-                    cell_content = f"<span style='color:#a8b0c0; font-size:11px;'>{ball_val:02d}</span>"
+                    cell_content = (
+                        f"<div title='Miejsce {col_nr} | Oryg. Poz. {orig_pos:02d}' "
+                        f"style='display:flex; flex-direction:column; align-items:center;'>"
+                        f"<span style='color:#a8b0c0; font-size:11px;'>{ball_val:02d}</span>"
+                        f"{pos_tag}</div>"
+                    )
 
-            cells_html.append(f"<td style='padding: 4px 2px; text-align: center; border-right: 1px solid #232731;'>{cell_content}</td>")
+            cells_html.append(f"<td style='padding: 3px 1px; text-align: center; border-right: 1px solid #232731;'>{cell_content}</td>")
 
         d_id = all_ids[t]
         d_time = all_times[t]
@@ -451,7 +475,13 @@ def render_keno_cascade(section_id=1, default_top_val=20):
     col_roll_tab, col_roll_pos = st.columns([1.6, 0.9], gap="large")
     
     with col_roll_tab:
-        st.markdown(f"#### 📋 2. Tabela Losowań wg kolejności 'Ostatnia' 🟦 (sprawdzane 15 losowań)")
+        if is_mode_b:
+            st.markdown(f"#### 📋 2. Tabela Losowań 🟦 — Stos Liderów (ostatnie {blue_steps} losowań)")
+            st.caption("Gdy w nowym losowaniu inna pozycja ma najwięcej trafień, wskakuje na górę (np. na `M.1`), a poprzednia **zostaje dokładnie w wierszu pod nią** wraz z podpisem `P..` (np. `P10`, wyżej `P15`) i jest sprawdzana na kolejne losowanie.")
+        else:
+            st.markdown(f"#### 📋 2. Tabela Losowań 🟦 — Stałe Zakotwiczone Pozycje (ostatnie {blue_steps} losowań)")
+            st.caption("Pozycje wyłonione na początku badanego okresu **zostają w swoich kolumnach do samego końca**, bez przeskakiwania między miejscami.")
+
         rolling_full_html = f"""
         <!DOCTYPE html>
         <html>
@@ -459,10 +489,10 @@ def render_keno_cascade(section_id=1, default_top_val=20):
             <meta charset="utf-8">
             <style>
                 body {{ margin: 0; padding: 0; background-color: #0e1117; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-                .table-container {{ max-height: 580px; overflow-y: auto; overflow-x: auto; border: 1px solid #333945; border-radius: 8px; }}
+                .table-container {{ max-height: 600px; overflow-y: auto; overflow-x: auto; border: 1px solid #333945; border-radius: 8px; }}
                 table {{ width: 100%; border-collapse: collapse; }}
                 thead {{ position: sticky; top: 0; background-color: #161922; z-index: 10; border-bottom: 2px solid #333945; }}
-                th {{ padding: 8px 6px; text-align: left; color: #e6e6e6; font-size: 12px; }}
+                th {{ padding: 6px 4px; text-align: left; color: #e6e6e6; font-size: 11px; }}
             </style>
         </head>
         <body>
@@ -470,10 +500,10 @@ def render_keno_cascade(section_id=1, default_top_val=20):
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 75px;">Nr</th>
-                            <th style="width: 55px;">Czas</th>
+                            <th style="width: 70px;">Nr</th>
+                            <th style="width: 50px;">Czas</th>
                             {headers_rolling_html}
-                            <th style="width: 60px; text-align: center; color: #00aaff;">🟦 Suma</th>
+                            <th style="width: 55px; text-align: center; color: #00aaff;">🟦 Suma</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -484,241 +514,57 @@ def render_keno_cascade(section_id=1, default_top_val=20):
         </body>
         </html>
         """
-        components.html(rolling_full_html, height=600, scrolling=False)
+        components.html(rolling_full_html, height=620, scrolling=False)
 
     with col_roll_pos:
-        st.markdown(f"#### 📊 2. Tabela Pozycji Trafień 🟦 (z 15 losowań)")
+        st.markdown(f"#### 📊 2. Tabela Pozycji Trafień 🟦 (z {blue_steps} losowań)")
+        st.caption("Zestawienie trafień dla poszczególnych miejsc (1–20) z pokazaniem, która pozycja zajmuje dane miejsce teraz oraz ile ma trafień.")
+        
         pos_summary_rows = []
         for r in range(1, 21):
-            b_hits = rank_pos_blue_hits[r]
+            b_hits = col_blue_hits[r]
             eff_pct = (b_hits / evaluated_draws_count * 100.0) if evaluated_draws_count > 0 else 0.0
-            curr_ball = latest_rank_numbers.get(r, 0)
-            orig_p = latest_rank_orig_pos.get(r, 0)
+            curr_info = latest_col_data.get(r, {"ball": 0, "orig_pos": r})
+            curr_ball = curr_info["ball"]
+            orig_p = curr_info["orig_pos"]
+            
+            # Ile razy sama oryginalna pozycja (np. Poz. 10) trafiła w całym okresie 15 losowań (nawet gdy spadła niżej)
+            orig_total_hits = orig_pos_blue_hits[orig_p]
             
             pos_summary_rows.append({
-                "blue_pos_num": r,
-                "Pozycja w tabeli": f"Poz. {r:02d}",
+                "Miejsce": f"Miejsce {r:02d}",
                 "raw_blue": b_hits,
-                "🟦 Trafienia": f"{b_hits} ({eff_pct:.1f}%)",
-                "Teraz w grze": int(curr_ball),
-                "Z pozycji": f"Poz. {orig_p:02d}"
+                "🟦 Trafienia miejsca": f"{b_hits} ({eff_pct:.1f}%)",
+                "Aktualna Poz.": f"Poz. {orig_p:02d}",
+                "Trafienia tej Poz.": f"{orig_total_hits}/{evaluated_draws_count}",
+                "Teraz w grze": int(curr_ball)
             })
             
-        df_roll_pos_full = pd.DataFrame(pos_summary_rows).sort_values(
+        df_roll_pos = pd.DataFrame(pos_summary_rows).sort_values(
             by="raw_blue", ascending=False, kind="mergesort"
-        ).reset_index(drop=True)
-        
-        df_roll_pos = df_roll_pos_full.drop(columns=["raw_blue", "blue_pos_num"])
+        ).drop(columns=["raw_blue"])
         
         st.dataframe(
             df_roll_pos,
             column_config={
-                "Pozycja w tabeli": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
-                "🟦 Trafienia": st.column_config.TextColumn("🟦 Niebieskie kwadraty", width="small"),
-                "Teraz w grze": st.column_config.NumberColumn("Ostatnia (Teraz)", width="small"),
-                "Z pozycji": st.column_config.TextColumn("Skąd (Oryg.)", width="small"),
+                "Miejsce": st.column_config.TextColumn("Miejsce (1-20)", width="small"),
+                "🟦 Trafienia miejsca": st.column_config.TextColumn("🟦 Trafienia kolumny", width="small"),
+                "Aktualna Poz.": st.column_config.TextColumn("Jaka pozycja teraz", width="small"),
+                "Trafienia tej Poz.": st.column_config.TextColumn("Stałe traf. pozycji", width="small"),
+                "Teraz w grze": st.column_config.NumberColumn("W grze", width="small"),
             },
             hide_index=True,
             use_container_width=True,
-            height=600,
+            height=620,
             key=f"roll_pos_tbl_{section_id}"
         )
 
-    # -----------------------------------------------------------------
-    # POZIOM 3: TRZECIA TABELA (ZIELONA 🟩) — DOMYŚLNIE 10 (DO WYBORU 10, 12, 15)
-    # -----------------------------------------------------------------
-    st.divider()
-    st.subheader("🟩 3. Trzecia Tabela (Zielona): Sprawdzenie wg Tabeli Pozycji Trafień 🟦")
-    
-    green_steps = st.radio(
-        "3️⃣ Wybierz liczbę losowań do sprawdzenia w Trzeciej Tabeli 🟩 (domyślnie 10, opcje: 10, 12, 15):",
-        options=[10, 12, 15],
-        index=0,  # Domyślnie 10 losowań
-        horizontal=True,
-        key=f"green_steps_radio_{section_id}"
-    )
-
-    start_idx_green = max(rolling_window - 1, total_df_rows - 1 - green_steps)
-    green_rows_html = []
-    rank_pos_green_hits = {r: 0 for r in range(1, 21)}
-    latest_green_numbers = {}
-    latest_green_from_blue = {}
-    evaluated_green_draws = 0
-
-    headers_green_html = "".join([
-        f"<th style='padding: 6px 2px; text-align: center; color: #00e676; font-size: 11px; width: 30px; border-right: 1px solid #2a2e39;'>{col_i}</th>" 
-        for col_i in range(1, 21)
-    ])
-
-    for t in range(total_df_rows - 1, start_idx_green - 1, -1):
-        is_latest_unverified = (t == total_df_rows - 1)
-        
-        if is_latest_unverified:
-            green_ranking_sorted = []
-            for _, b_row in df_roll_pos_full.iterrows():
-                green_ranking_sorted.append({
-                    "blue_pos": int(b_row["blue_pos_num"]),
-                    "raw_blue": int(b_row["🟦 Trafienia"].split()[0]),
-                    "ball_val": int(b_row["Teraz w grze"])
-                })
-        else:
-            hist_start = max(earliest_t_needed, t - blue_steps)
-            hist_end = t
-            
-            blue_counts_at_t = {r: 0 for r in range(1, 21)}
-            for k_step in range(hist_start, hist_end):
-                for b_item in blue_row_data_by_t[k_step]:
-                    if b_item["hit_blue"]:
-                        blue_counts_at_t[b_item["blue_pos"]] += 1
-                        
-            current_blue_row = {b_item["blue_pos"]: b_item["ball"] for b_item in blue_row_data_by_t[t]}
-            
-            temp_green = []
-            for r in range(1, 21):
-                temp_green.append({
-                    "blue_pos": r,
-                    "raw_blue": blue_counts_at_t[r],
-                    "ball_val": current_blue_row[r]
-                })
-                
-            df_green_step = pd.DataFrame(temp_green).sort_values(
-                by="raw_blue", ascending=False, kind="mergesort"
-            ).reset_index(drop=True)
-            green_ranking_sorted = df_green_step.to_dict("records")
-
-        next_draw_set = all_sets[t + 1] if not is_latest_unverified else set()
-        if not is_latest_unverified:
-            evaluated_green_draws += 1
-
-        row_green_count = 0
-        cells_green_html = []
-
-        for rank_idx, g_item in enumerate(green_ranking_sorted):
-            green_pos_nr = rank_idx + 1
-            ball_val = int(g_item["ball_val"])
-            from_blue_pos = int(g_item["blue_pos"])
-            blue_score = int(g_item["raw_blue"])
-
-            if is_latest_unverified:
-                latest_green_numbers[green_pos_nr] = ball_val
-                latest_green_from_blue[green_pos_nr] = from_blue_pos
-                cell_content = f"<span style='color:#ffd166; font-weight:bold; font-size:11px;'>{ball_val:02d}</span>"
-            else:
-                is_hit_green = (ball_val in next_draw_set)
-                if is_hit_green:
-                    rank_pos_green_hits[green_pos_nr] += 1
-                    row_green_count += 1
-                    cell_content = (
-                        f"<span title='Poz. 🟩 {green_pos_nr:02d} (z Poz. 🟦 {from_blue_pos:02d}, 🟦={blue_score}) - TRAFIONA w #{all_ids[t+1]}' "
-                        f"style='display:inline-flex; align-items:center; justify-content:center; "
-                        f"width:26px; height:26px; border:2px solid #00e676; border-radius:4px; "
-                        f"background-color:rgba(0, 230, 118, 0.32); color:#ffffff; font-weight:bold; "
-                        f"font-size:11px; margin:1px; box-sizing:border-box; box-shadow: 0 0 5px rgba(0,230,118,0.6);'>"
-                        f"{ball_val:02d}</span>"
-                    )
-                else:
-                    cell_content = f"<span style='color:#a8b0c0; font-size:11px;'>{ball_val:02d}</span>"
-
-            cells_green_html.append(f"<td style='padding: 4px 2px; text-align: center; border-right: 1px solid #232731;'>{cell_content}</td>")
-
-        d_id = all_ids[t]
-        d_time = all_times[t]
-
-        if is_latest_unverified:
-            sum_green_html = "<td style='padding: 4px 6px; text-align: center; font-weight: bold; font-size: 11px; color: #ffd166; border-left: 2px solid #333945;'>⏳ W grze</td>"
-        else:
-            badge_color = "#00e676" if row_green_count > 0 else "#6c7385"
-            badge_bg = "rgba(0, 230, 118, 0.18)" if row_green_count > 0 else "transparent"
-            sum_green_html = f"<td style='padding: 4px 6px; text-align: center; font-weight: bold; font-size: 12px; color: {badge_color}; background-color: {badge_bg}; border-left: 2px solid #333945;'>{row_green_count}</td>"
-
-        row_g_html = f"""
-        <tr style='border-bottom: 1px solid #262a34;'>
-            <td style='padding: 6px 6px; font-weight: bold; color: #ffffff; white-space: nowrap; font-size: 11px;'>{d_id}</td>
-            <td style='padding: 6px 6px; color: #9da3af; white-space: nowrap; font-size: 11px;'>{d_time}</td>
-            {''.join(cells_green_html)}
-            {sum_green_html}
-        </tr>
-        """
-        green_rows_html.append(row_g_html)
-
-    col_green_tab, col_green_pos = st.columns([1.6, 0.9], gap="large")
-
-    with col_green_tab:
-        st.markdown(f"#### 📋 3. Tabela Losowań wg kolejności z Tabeli Niebieskiej 🟩 (sprawdzane {green_steps} losowań)")
-        green_full_html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{ margin: 0; padding: 0; background-color: #0e1117; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-                .table-container {{ max-height: 580px; overflow-y: auto; overflow-x: auto; border: 1px solid #333945; border-radius: 8px; }}
-                table {{ width: 100%; border-collapse: collapse; }}
-                thead {{ position: sticky; top: 0; background-color: #161922; z-index: 10; border-bottom: 2px solid #333945; }}
-                th {{ padding: 8px 6px; text-align: left; color: #e6e6e6; font-size: 12px; }}
-            </style>
-        </head>
-        <body>
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 75px;">Nr</th>
-                            <th style="width: 55px;">Czas</th>
-                            {headers_green_html}
-                            <th style="width: 60px; text-align: center; color: #00e676;">🟩 Suma</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {''.join(green_rows_html)}
-                    </tbody>
-                </table>
-            </div>
-        </body>
-        </html>
-        """
-        components.html(green_full_html, height=600, scrolling=False)
-
-    with col_green_pos:
-        st.markdown(f"#### 📊 3. Tabela Pozycji Trafień 🟩 (z {green_steps} losowań)")
-        green_summary_rows = []
-        for r in range(1, 21):
-            g_hits = rank_pos_green_hits[r]
-            eff_pct = (g_hits / evaluated_green_draws * 100.0) if evaluated_green_draws > 0 else 0.0
-            curr_ball = latest_green_numbers.get(r, "-")
-            from_b = latest_green_from_blue.get(r, "-")
-            
-            green_summary_rows.append({
-                "Pozycja w tabeli": f"Poz. {r:02d}",
-                "raw_green": g_hits,
-                "🟩 Trafienia": f"{g_hits} ({eff_pct:.1f}%)",
-                "Teraz w grze": curr_ball,
-                "Z pozycji 🟦": f"Poz. {from_b:02d}" if isinstance(from_b, int) else "-"
-            })
-            
-        df_green_pos = pd.DataFrame(green_summary_rows).sort_values(
-            by="raw_green", ascending=False, kind="mergesort"
-        ).drop(columns=["raw_green"])
-        
-        st.dataframe(
-            df_green_pos,
-            column_config={
-                "Pozycja w tabeli": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
-                "🟩 Trafienia": st.column_config.TextColumn("🟩 Zielone kwadraty", width="small"),
-                "Teraz w grze": st.column_config.NumberColumn("Ostatnia (Teraz)", width="small"),
-                "Z pozycji 🟦": st.column_config.TextColumn("Skąd (z 🟦)", width="small"),
-            },
-            hide_index=True,
-            use_container_width=True,
-            height=600,
-            key=f"green_pos_tbl_{section_id}"
-        )
-
 
 # =====================================================================
-# WYWOŁANIE GŁÓWNEJ KASKADY (Domyślnie 20 dla Tabeli 1)
+# WYWOŁANIE GŁÓWNEJ SEKCJI (Domyślnie 20 dla Tabeli 1, 15 dla Niebieskiej)
 # =====================================================================
-render_keno_cascade(section_id=1, default_top_val=20)
+render_keno_section(section_id=1, default_top_val=20)
+
 
 
 
