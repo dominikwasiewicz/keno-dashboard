@@ -119,7 +119,7 @@ st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['d
 def render_keno_section(section_id=1, default_top_val=20):
     st.divider()
     
-    top_ranges = [11, 15, 20, 25, 30, 50, 100, 300]
+    top_ranges = [11, 15, 20, 25, 30, 50, 100, ]
     available_top = [opt for opt in top_ranges if opt <= len(df)]
     if not available_top:
         available_top = [len(df)]
