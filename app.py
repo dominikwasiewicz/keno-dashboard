@@ -119,12 +119,12 @@ st.info(f"Ostatnie losowanie: **#{last_draw['draw_id']}** (godz. **{last_draw['d
 def render_keno_section(section_id=1, default_top_val=20):
     st.divider()
     
-    top_ranges = [11, 15, 20, 25, 30, 50, 100]
+    top_ranges = [11, 15, 20, 25, 30, 50, 100, 300]
     available_top = [opt for opt in top_ranges if opt <= len(df)]
     if not available_top:
         available_top = [len(df)]
         
-    default_top_idx = available_top.index(default_top_val) if default_top_val in available_top else 0
+    default_top_idx = available_top.index(15) if default_top_val in available_top else 0
 
     selected_window = st.radio(
         "1️⃣ Wybierz zakres analizy dla Pierwszej Tabeli:",
