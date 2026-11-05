@@ -568,6 +568,210 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 
+# =====================================================================
+# MODUŁ ALGORYTMU PREDEKCYJNEGO: WSKAZANIE NASTĘPNYCH TRAFIEŃ (T+1)
+# =====================================================================
+def render_prediction_algorithm(df_full, window_size=20, backtest_steps=15):
+    st.divider()
+    st.header("🧠 Algorytm Wskazujący Następne Trafienia (Analiza Węzłów T+1)")
+    st.caption(
+        "Algorytm analizuje ostatnie losowanie i oblicza indeks siły (Score) dla każdej z 20 pozycji, "
+        "łącząc skuteczność kolumny, zjawisko 'Podwójnego Węzła' (🔴+⬜), aktywność sąsiednich pozycji oraz historyczną parzystość powtórek."
+    )
+
+    if len(df_full) < window_size + backtest_steps + 2:
+        st.warning("Za mało danych w bazie do uruchomienia pełnego modelu predykcyjnego.")
+        return
+
+    all_lists = df_full["numbers_list"].tolist()
+    all_sets = df_full["numbers_set"].tolist()
+    all_ids = df_full["draw_id"].tolist()
+    all_times = df_full["draw_time"].tolist()
+    total_draws = len(df_full)
+
+    # 1. Obliczenie globalnej skłonności każdej z 70 liczb do powtarzania się w T+1 (na bazie całej historii)
+    num_appearances = {n: 0 for n in range(1, 71)}
+    num_repeats_t1 = {n: 0 for n in range(1, 71)}
+    for idx in range(total_draws - 1):
+        curr_s = all_sets[idx]
+        next_s = all_sets[idx + 1]
+        for num in curr_s:
+            num_appearances[num] += 1
+            if num in next_s:
+                num_repeats_t1[num] += 1
+
+    global_repeat_rate = {
+        n: (num_repeats_t1[n] / num_appearances[n]) if num_appearances[n] > 0 else 0.285
+        for n in range(1, 71)
+    }
+
+    # Funkcja wyliczająca punkty (Score) dla dowolnego losowania t_idx (używana do typowania na żywo oraz do Backtestu)
+    def score_draw_at_index(t_idx):
+        win_start = t_idx - window_size + 1
+        win_lists = all_lists[win_start : t_idx + 1]
+        win_sets = all_sets[win_start : t_idx + 1]
+        trans_count = len(win_lists) - 1  # liczba przejść T -> T+1 w oknie
+
+        curr_nums = all_lists[t_idx]
+        prev_set = all_sets[t_idx - 1] if t_idx >= 1 else set()
+        prev2_set = all_sets[t_idx - 2] if t_idx >= 2 else set()
+
+        # Obliczamy, gdzie były białe kwadraty w ostatnich 3 znanych przejściach (t_idx-3 -> t_idx-2 -> t_idx-1 -> t_idx)
+        recent_squares_by_pos = {p: 0 for p in range(1, 21)}
+        for lookback in range(1, min(4, trans_count + 1)):
+            lb_idx = t_idx - lookback
+            lb_nums = all_lists[lb_idx]
+            lb_next_set = all_sets[lb_idx + 1]
+            for p_i in range(20):
+                if lb_nums[p_i] in lb_next_set:
+                    recent_squares_by_pos[p_i + 1] += 1
+
+        candidates = []
+        for p_i in range(20):
+            pos_nr = p_i + 1
+            ball = curr_nums[p_i]
+
+            # Kryterium 1: Skuteczność pozycji w oknie (0 - 35 pkt)
+            pos_hits = sum(1 for k in range(trans_count) if win_lists[k][p_i] in win_sets[k + 1])
+            pos_rate = pos_hits / trans_count if trans_count > 0 else 0
+            score_pos = min(35.0, (pos_rate / 0.55) * 35.0)
+
+            # Kryterium 2: Zjawisko "Podwójnego Węzła" - czy liczba ma czerwone kółko 🔴 (0 - 25 pkt)
+            in_prev1 = (ball in prev_set)
+            in_prev2 = (ball in prev2_set)
+            if in_prev1 and in_prev2:
+                score_momentum = 25.0  # Silna seria (minimum 3 losowania z rzędu, jak 26 lub 27)
+                streak_label = "🔥🔥 Seria 3+"
+            elif in_prev1:
+                score_momentum = 18.0  # Właśnie powtórzyła się z T-1 (ma czerwone kółko)
+                streak_label = "🔴 Trafiona z T-1"
+            else:
+                score_momentum = 4.0
+                streak_label = "Nowa"
+
+            # Kryterium 3: Aktywność sąsiednich kolumn (p-1, p, p+1) w ostatnich 3 losowaniach (0 - 20 pkt)
+            neighbor_positions = [pos for pos in [pos_nr - 1, pos_nr, pos_nr + 1] if 1 <= pos <= 20]
+            recent_cluster_hits = sum(recent_squares_by_pos[np] for np in neighbor_positions)
+            score_cluster = min(20.0, recent_cluster_hits * 4.5)
+
+            # Kryterium 4: Historyczna skłonność tej konkretnej kuli do powtórek T+1 (0 - 20 pkt)
+            ball_rep_rate = global_repeat_rate.get(ball, 0.285)
+            score_ball_hist = min(20.0, max(0.0, ((ball_rep_rate - 0.20) / 0.18) * 20.0))
+
+            total_score = round(score_pos + score_momentum + score_cluster + score_ball_hist, 1)
+
+            candidates.append({
+                "pos_nr": pos_nr,
+                "Pozycja": f"Poz. {pos_nr:02d}",
+                "Liczba": ball,
+                "Score": total_score,
+                "Status Węzła": streak_label,
+                "Trafienia Poz. (Okno)": f"{pos_hits}/{trans_count} ({pos_rate*100:.1f}%)",
+                "Klaster (3 los.)": f"{recent_cluster_hits} ⬜ w sąsiedztwie",
+                "Hist. powtórek liczby": f"{ball_rep_rate*100:.1f}%"
+            })
+
+        # Sortujemy od najwyższego wyniku Score
+        df_cand = pd.DataFrame(candidates).sort_values(
+            by=["Score", "pos_nr"], ascending=[False, True], kind="mergesort"
+        ).reset_index(drop=True)
+        return df_cand
+
+    # --- WYLICZENIE DLA NAJNOWSZEGO LOSOWANIA (NA ŻYWO DO NASTĘPNEJ GRY) ---
+    latest_idx = total_draws - 1
+    df_predictions = score_draw_at_index(latest_idx)
+
+    top_5_Row = df_predictions.head(5)
+    top_8_Row = df_predictions.head(8)
+
+    top5_balls_str = ", ".join(f"**{int(r['Liczba']):02d}** *(Poz. {int(r['pos_nr']):02d})*" for _, r in top_5_Row.iterrows())
+    top8_balls_only = ", ".join(f"{int(r['Liczba']):02d}" for _, r in top_8_Row.iterrows())
+
+    # Wyświetlenie głównego boksu rekomendacji
+    st.success(
+        f"🎯 **WSKAZANIE ALGORYTMU NA NASTĘPNE LOSOWANIE (po #{all_ids[latest_idx]} z godz. {all_times[latest_idx]}):**\n\n"
+        f"🔥 **TOP 5 Najmocniejszych Węzłów:** {top5_balls_str}\n\n"
+        f"📌 **Szerszy koszyk TOP 8 liczb:** `{top8_balls_only}`"
+    )
+
+    col_pred_table, col_backtest = st.columns([1.3, 1.2], gap="large")
+
+    with col_pred_table:
+        st.subheader(f"📊 Ranking wszystkich 20 liczb z losowania #{all_ids[latest_idx]}")
+        df_display_pred = df_predictions.drop(columns=["pos_nr"]).copy()
+        st.dataframe(
+            df_display_pred,
+            column_config={
+                "Pozycja": st.column_config.TextColumn("Pozycja", width="small"),
+                "Liczba": st.column_config.NumberColumn("Kula (Typ)", width="small"),
+                "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
+                "Status Węzła": st.column_config.TextColumn("Status (🔴/⬜)", width="small"),
+                "Trafienia Poz. (Okno)": st.column_config.TextColumn("Skuteczność Poz.", width="small"),
+                "Klaster (3 los.)": st.column_config.TextColumn("Sąsiedztwo", width="small"),
+                "Hist. powtórek liczby": st.column_config.TextColumn("Powtórki Kuli", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=560
+        )
+
+    # --- BACKTEST: SPRAWDZENIE SKUTECZNOŚCI ALGORYTMU NA OSTATNICH N LOSOWANIACH ---
+    with col_backtest:
+        st.subheader(f"🧪 Weryfikacja wsteczna algorytmu (ostatnie {backtest_steps} losowań)")
+        st.caption("Tabela pokazuje, które liczby algorytm wskazałby jako TOP 5 oraz TOP 8 w poprzednich losowaniach i ile z nich faktycznie trafiło (🟩).")
+
+        bt_rows = []
+        total_top5_hits = 0
+        total_top8_hits = 0
+
+        for step_t in range(latest_idx - 1, latest_idx - 1 - backtest_steps, -1):
+            df_step_pred = score_draw_at_index(step_t)
+            next_actual_set = all_sets[step_t + 1]
+
+            top5_nums = df_step_pred.head(5)["Liczba"].tolist()
+            top8_nums = df_step_pred.head(8)["Liczba"].tolist()
+
+            hits_5 = [n for n in top5_nums if n in next_actual_set]
+            hits_8 = [n for n in top8_nums if n in next_actual_set]
+
+            total_top5_hits += len(hits_5)
+            total_top8_hits += len(hits_8)
+
+            formatted_top5 = " ".join(
+                f"[{n:02d}]🟩" if n in next_actual_set else f"{n:02d}"
+                for n in top5_nums
+            )
+
+            bt_rows.append({
+                "Z losowania": f"#{all_ids[step_t]} ({all_times[step_t]})",
+                "Wytypowane TOP 5 (🟩=Trafione)": formatted_top5,
+                "Trafienia z TOP 5": f"{len(hits_5)} / 5",
+                "Trafienia z TOP 8": f"{len(hits_8)} / 8",
+            })
+
+        avg_top5 = (total_top5_hits / (backtest_steps * 5)) * 100
+        avg_top8 = (total_top8_hits / (backtest_steps * 8)) * 100
+        st.info(
+            f"📈 **Skuteczność historyczna modelu (na {backtest_steps} gier):** "
+            f"TOP 5 trafia średnio **{avg_top5:.1f}%** ({total_top5_hits}/{backtest_steps*5}) | "
+            f"TOP 8 trafia średnio **{avg_top8:.1f}%** ({total_top8_hits}/{backtest_steps*8}) "
+            f"*(losowe tło Keno to 28.6%)*"
+        )
+
+        st.dataframe(
+            pd.DataFrame(bt_rows),
+            hide_index=True,
+            use_container_width=True,
+            height=480
+        )
+
+# Wywołanie modułu predykcyjnego na dole strony:
+render_prediction_algorithm(df, window_size=20, backtest_steps=15)
+
+
+
+
+
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
