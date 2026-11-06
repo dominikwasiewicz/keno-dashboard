@@ -1093,52 +1093,6 @@ def render_prediction_algorithm(df_full, window_size=20, backtest_steps=15):
         st.caption("Tabela pokazuje, które liczby algorytm wskazałby jako TOP 5 oraz TOP 8 w poprzednich losowaniach i ile z nich faktycznie trafiło (🟩).")
 
         bt_rows = []
-        total_top5_hits = 0
-        total_top8_hits = 0
-
-        for step_t in range(latest_idx - 1, latest_idx - 1 - backtest_steps, -1):
-            df_step_pred = score_draw_at_index(step_t)
-            next_actual_set = all_sets[step_t + 1]
-
-            top5_nums = df_step_pred.head(5)["Liczba"].tolist()
-            top8_nums = df_step_pred.head(8)["Liczba"].tolist()
-
-            hits_5 = [n for n in top5_nums if n in next_actual_set]
-            hits_8 = [n for n in top8_nums if n in next_actual_set]
-
-            total_top5_hits += len(hits_5)
-            total_top8_hits += len(hits_8)
-
-            formatted_top5 = " ".join(
-                f"[{n:02d}]🟩" if n in next_actual_set else f"{n:02d}"
-                for n in top5_nums
-            )
-
-            bt_rows.append({
-                "Z losowania": f"#{all_ids[step_t]} ({all_times[step_t]})",
-                "Wytypowane TOP 5 (🟩=Trafione)": formatted_top5,
-                "Trafienia z TOP 5": f"{len(hits_5)} / 5",
-                "Trafienia z TOP 8": f"{len(hits_8)} / 8",
-            })
-
-        avg_top5 = (total_top5_hits / (backtest_steps * 5)) * 100
-        avg_top8 = (total_top8_hits / (backtest_steps * 8)) * 100
-        st.info(
-            f"📈 **Skuteczność historyczna modelu (na {backtest_steps} gier):** "
-            f"TOP 5 trafia średnio **{avg_top5:.1f}%** ({total_top5_hits}/{backtest_steps*5}) | "
-            f"TOP 8 trafia średnio **{avg_top8:.1f}%** ({total_top8_hits}/{backtest_steps*8}) "
-            f"*(losowe tło Keno to 28.6%)*"
-        )
-
-        st.dataframe(
-            pd.DataFrame(bt_rows),
-            hide_index=True,
-            use_container_width=True,
-            height=480
-        )
-
-# Wywołanie modułu predykcyjnego na dole strony:
-render_prediction_algorithm(df, window_size=20, backtest_steps=15)
 
 
 
