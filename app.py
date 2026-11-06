@@ -569,6 +569,378 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
+# MODUŁ ALGORYTMU PREDYKCYJNEGO: CZĘSTOTLIWOŚĆ + PARY + BACKTEST (30 LOS.)
+# =====================================================================
+def render_prediction_algorithm(df_full, window_size=20, backtest_steps=30):
+    st.divider()
+    st.header("🧠 Algorytm Wskazujący Następne Trafienia (Węzły T+1 + Częstotliwość + Pary)")
+    st.caption(
+        f"Model wieloczynnikowy (0–100 pkt): 1) Skuteczność pozycji T+1, 2) Częstotliwość losowania kuli (w oknie {window_size} i całej bazie) + "
+        f"zgodność z 'Najczęstszą' na pozycji, 3) Podwójny Węzeł (🔴+⬜), 4) Gorące sąsiedztwo, 5) Siła par przechodzących wspólnie do T+1. "
+        f"Weryfikacja wsteczna: **{backtest_steps} losowań**."
+    )
+
+    if len(df_full) < window_size + backtest_steps + 2:
+        st.warning(f"Za mało danych w bazie ({len(df_full)}), aby wykonać test dla okna {window_size} i {backtest_steps} kroków wstecz.")
+        return
+
+    all_lists = df_full["numbers_list"].tolist()
+    all_sets = df_full["numbers_set"].tolist()
+    all_ids = df_full["draw_id"].tolist()
+    all_times = df_full["draw_time"].tolist()
+    total_draws = len(df_full)
+
+    # 1. Globalne statystyki liczb (częstotliwość ogólna i powtórki T+1) oraz macierze par
+    num_appearances = {n: 0 for n in range(1, 71)}
+    num_repeats_t1 = {n: 0 for n in range(1, 71)}
+    pair_appearances_global = defaultdict(int)
+    pair_repeats_t1_global = defaultdict(int)
+
+    for idx in range(total_draws - 1):
+        curr_list = all_lists[idx]
+        curr_s = all_sets[idx]
+        next_s = all_sets[idx + 1]
+        
+        for num in curr_list:
+            num_appearances[num] += 1
+            if num in next_s:
+                num_repeats_t1[num] += 1
+
+        # Zliczanie wspólnych przejść par (dwójek) z losowania T do T+1
+        surviving_nums = [n for n in curr_list if n in next_s]
+        for p in combinations(curr_list, 2):
+            pair_appearances_global[p] += 1
+        for p_surv in combinations(surviving_nums, 2):
+            pair_repeats_t1_global[p_surv] += 1
+
+    # Dodajemy też ostatnie losowanie do ogólnej liczby wystąpień
+    for num in all_lists[-1]:
+        num_appearances[num] += 1
+
+    global_repeat_rate = {
+        n: (num_repeats_t1[n] / max(1, num_appearances[n] - 1)) if num_appearances[n] > 1 else 0.285
+        for n in range(1, 71)
+    }
+
+    # Funkcja oceniająca 20 liczb oraz pary dla dowolnego losowania t_idx
+    def score_draw_at_index(t_idx):
+        win_start = t_idx - window_size + 1
+        win_lists = all_lists[win_start : t_idx + 1]
+        win_sets = all_sets[win_start : t_idx + 1]
+        trans_count = len(win_lists) - 1
+
+        curr_nums = all_lists[t_idx]
+        prev_set = all_sets[t_idx - 1] if t_idx >= 1 else set()
+        prev2_set = all_sets[t_idx - 2] if t_idx >= 2 else set()
+
+        # Częstotliwość występowania każdej liczby w badanym oknie (np. ostatnich 20 losowań)
+        win_ball_freq = defaultdict(int)
+        for d_list in win_lists:
+            for b in d_list:
+                win_ball_freq[b] += 1
+        max_win_freq = max([win_ball_freq[b] for b in curr_nums] + [1])
+
+        # Wspólne wystąpienia i powtórki T+1 dla par w badanym oknie + w ostatnich 120 losowaniach
+        local_hist_start = max(0, t_idx - 120)
+        local_lists = all_lists[local_hist_start : t_idx + 1]
+        local_sets = all_sets[local_hist_start : t_idx + 1]
+        
+        pair_win_cooc = defaultdict(int)
+        pair_win_t1 = defaultdict(int)
+        pair_loc_t1 = defaultdict(int)
+
+        # W oknie głównym (np. 20 losowań)
+        for k in range(len(win_lists)):
+            for p in combinations(win_lists[k], 2):
+                pair_win_cooc[p] += 1
+            if k < trans_count:
+                surv = [n for n in win_lists[k] if n in win_sets[k + 1]]
+                for p_s in combinations(surv, 2):
+                    pair_win_t1[p_s] += 1
+
+        # W szerszym oknie lokalnym (ostatnie 120 losowań do momentu t_idx)
+        for k in range(len(local_lists) - 1):
+            surv = [n for n in local_lists[k] if n in local_sets[k + 1]]
+            for p_s in combinations(surv, 2):
+                pair_loc_t1[p_s] += 1
+
+        # Ocena wszystkich 190 par z bieżącego losowania t_idx
+        pairs_ranked = []
+        ball_pair_bonus = defaultdict(float)
+
+        for a, b in combinations(curr_nums, 2):
+            p_key = (a, b)
+            w_cooc = pair_win_cooc[p_key]
+            w_t1 = pair_win_t1[p_key]
+            l_t1 = pair_loc_t1[p_key]
+            g_t1 = pair_repeats_t1_global[p_key]
+            g_app = max(1, pair_appearances_global[p_key])
+            g_rate = (g_t1 / g_app) * 100.0
+
+            both_in_prev = (a in prev_set) and (b in prev_set)
+            adj_bonus = 4.0 if abs(curr_nums.index(a) - curr_nums.index(b)) == 1 else 0.0
+            prev_pair_bonus = 8.0 if both_in_prev else 0.0
+
+            pair_score = round(
+                (w_t1 * 12.0) + (w_cooc * 3.0) + (l_t1 * 2.5) + (g_rate * 0.8) + adj_bonus + prev_pair_bonus, 1
+            )
+
+            pairs_ranked.append({
+                "Para": f"{a:02d} - {b:02d}",
+                "b1": a,
+                "b2": b,
+                "PairScore": pair_score,
+                "Razem w oknie": f"{w_cooc}x",
+                "Przejścia T+1 (Okno)": f"{w_t1}x",
+                "Przejścia T+1 (120 los.)": f"{l_t1}x",
+                "Przejścia T+1 (Cała baza)": f"{g_t1}x ({g_rate:.1f}%)",
+                "Status Pary": "🔴🔴 Obie z T-1" if both_in_prev else ("🔗 Sąsiednie Poz." if adj_bonus > 0 else "Standard")
+            })
+
+        df_pairs = pd.DataFrame(pairs_ranked).sort_values(
+            by=["PairScore", "b1", "b2"], ascending=[False, True, True], kind="mergesort"
+        ).reset_index(drop=True)
+
+        # Bonus dla pojedynczych liczb z 10 najsilniejszych par
+        for rank_i, p_row in df_pairs.head(10).iterrows():
+            weight = max(1.0, 10.0 - rank_i * 0.9)
+            ball_pair_bonus[int(p_row["b1"])] = max(ball_pair_bonus[int(p_row["b1"])], weight)
+            ball_pair_bonus[int(p_row["b2"])] = max(ball_pair_bonus[int(p_row["b2"])], weight)
+
+        # Białe kwadraty w ostatnich 3 przejściach (aktywność sąsiedztwa)
+        recent_squares_by_pos = {p: 0 for p in range(1, 21)}
+        for lookback in range(1, min(4, trans_count + 1)):
+            lb_idx = t_idx - lookback
+            lb_nums = all_lists[lb_idx]
+            lb_next_set = all_sets[lb_idx + 1]
+            for p_i in range(20):
+                if lb_nums[p_i] in lb_next_set:
+                    recent_squares_by_pos[p_i + 1] += 1
+
+        candidates = []
+        for p_i in range(20):
+            pos_nr = p_i + 1
+            ball = curr_nums[p_i]
+
+            # 1. Skuteczność pozycji T+1 w oknie (0 - 25 pkt)
+            pos_hits = sum(1 for k in range(trans_count) if win_lists[k][p_i] in win_sets[k + 1])
+            pos_rate = pos_hits / trans_count if trans_count > 0 else 0
+            score_pos = min(25.0, (pos_rate / 0.55) * 25.0)
+
+            # 2. NOWOŚĆ: Najczęstsze losowanie liczby (w oknie + na konkretnej pozycji + globalnie) (0 - 25 pkt)
+            ball_freq_in_win = win_ball_freq[ball]
+            freq_ratio = ball_freq_in_win / max_win_freq
+
+            # Sprawdzamy najczęstszą liczbę na tej konkretnej pozycji (kolumnie) w oknie
+            pos_col_vals = [win_lists[k][p_i] for k in range(len(win_lists))]
+            pos_series = pd.Series(pos_col_vals)
+            mode_on_pos = int(pos_series.mode().iloc[0])
+            mode_count_on_pos = int((pos_series == mode_on_pos).sum())
+            is_pos_leader = (ball == mode_on_pos and mode_count_on_pos >= 2)
+
+            score_freq = (freq_ratio * 17.0) + (8.0 if is_pos_leader else 0.0)
+            score_freq = min(25.0, score_freq)
+
+            # 3. Impuls Węzła (Czerwone Kółko 🔴 / Seria) (0 - 20 pkt)
+            in_prev1 = (ball in prev_set)
+            in_prev2 = (ball in prev2_set)
+            if in_prev1 and in_prev2:
+                score_momentum = 20.0
+                streak_label = "🔥🔥 Seria 3+"
+            elif in_prev1:
+                score_momentum = 14.0
+                streak_label = "🔴 Trafiona z T-1"
+            else:
+                score_momentum = 3.0
+                streak_label = "Nowa"
+
+            if is_pos_leader:
+                streak_label += " | ⭐ Lider Poz."
+
+            # 4. Gorąca strefa sąsiedztwa + historyczna powtarzalność kuli (0 - 20 pkt)
+            neighbor_positions = [pos for pos in [pos_nr - 1, pos_nr, pos_nr + 1] if 1 <= pos <= 20]
+            recent_cluster_hits = sum(recent_squares_by_pos[np] for np in neighbor_positions)
+            score_cluster = min(10.0, recent_cluster_hits * 2.5)
+
+            ball_rep_rate = global_repeat_rate.get(ball, 0.285)
+            score_ball_hist = min(10.0, max(0.0, ((ball_rep_rate - 0.20) / 0.18) * 10.0))
+
+            # 5. Bonus z Algorytmu Par (0 - 10 pkt)
+            score_pair = ball_pair_bonus.get(ball, 0.0)
+
+            total_score = round(score_pos + score_freq + score_momentum + score_cluster + score_ball_hist + score_pair, 1)
+
+            candidates.append({
+                "pos_nr": pos_nr,
+                "Pozycja": f"Poz. {pos_nr:02d}",
+                "Liczba": ball,
+                "Score": total_score,
+                "Częstotliwość (Okno)": f"{ball_freq_in_win}x / {window_size}",
+                "Najczęstsza na Poz.": f"{mode_on_pos:02d} (x{mode_count_on_pos})",
+                "Status Węzła": streak_label,
+                "Trafienia Poz. T+1": f"{pos_hits}/{trans_count} ({pos_rate*100:.1f}%)",
+                "Bonus z Par": f"+{score_pair:.1f} pkt",
+                "Częstotliwość (Baza)": f"{num_appearances[ball]}x ({ball_rep_rate*100:.1f}% powt.)"
+            })
+
+        df_cand = pd.DataFrame(candidates).sort_values(
+            by=["Score", "pos_nr"], ascending=[False, True], kind="mergesort"
+        ).reset_index(drop=True)
+
+        return df_cand, df_pairs
+
+    # --- WYLICZENIE DLA NAJNOWSZEGO LOSOWANIA (NA ŻYWO) ---
+    latest_idx = total_draws - 1
+    df_predictions, df_top_pairs = score_draw_at_index(latest_idx)
+
+    top_5_Row = df_predictions.head(5)
+    top_8_Row = df_predictions.head(8)
+    best_3_pairs = df_top_pairs.head(3)
+
+    top5_balls_str = ", ".join(f"**{int(r['Liczba']):02d}** *(Poz. {int(r['pos_nr']):02d} | {r['Częstotliwość (Okno)']})*" for _, r in top_5_Row.iterrows())
+    top8_balls_only = ", ".join(f"{int(r['Liczba']):02d}" for _, r in top_8_Row.iterrows())
+    top_pairs_str = "  |  ".join(f"**[{r['Para']}]** *(w oknie: {r['Razem w oknie']}, T+1: {r['Przejścia T+1 (Okno)']})*" for _, r in best_3_pairs.iterrows())
+
+    st.success(
+        f"🎯 **WSKAZANIE ALGORYTMU NA NASTĘPNE LOSOWANIE (po #{all_ids[latest_idx]} z godz. {all_times[latest_idx]}):**\n\n"
+        f"🔥 **TOP 5 Najmocniejszych Liczb (Węzły + Częstotliwość):** {top5_balls_str}\n\n"
+        f"🔗 **TOP 3 Najsilniejsze Pary (Dwójki przechodzące do T+1):** {top_pairs_str}\n\n"
+        f"📌 **Szerszy koszyk TOP 8 liczb:** `{top8_balls_only}`"
+    )
+
+    col_pred_table, col_pairs_table = st.columns([1.35, 1.05], gap="large")
+
+    with col_pred_table:
+        st.subheader(f"📊 Ranking 20 liczb z losowania #{all_ids[latest_idx]} (z Częstotliwością)")
+        df_display_pred = df_predictions.drop(columns=["pos_nr"]).copy()
+        st.dataframe(
+            df_display_pred,
+            column_config={
+                "Pozycja": st.column_config.TextColumn("Pozycja", width="small"),
+                "Liczba": st.column_config.NumberColumn("Kula", width="small"),
+                "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
+                "Częstotliwość (Okno)": st.column_config.TextColumn("Częstość (Okno)", width="small"),
+                "Najczęstsza na Poz.": st.column_config.TextColumn("Lider Pozycji", width="small"),
+                "Status Węzła": st.column_config.TextColumn("Status Węzła", width="medium"),
+                "Trafienia Poz. T+1": st.column_config.TextColumn("Poz. T+1", width="small"),
+                "Bonus z Par": st.column_config.TextColumn("Siła Par", width="small"),
+                "Częstotliwość (Baza)": st.column_config.TextColumn("Ogółem w bazie", width="medium"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=560,
+            key="pred_main_ranking_tbl"
+        )
+
+    with col_pairs_table:
+        st.subheader(f"🔗 Filtrowanie Par: TOP 15 Dwójek z losowania #{all_ids[latest_idx]}")
+        st.caption("Pary spośród aktualnych 20 liczb, które najczęściej chodzą razem i wspólnie przechodzą do następnego losowania (T+1).")
+        df_display_pairs = df_top_pairs.head(15).drop(columns=["b1", "b2"]).copy()
+        st.dataframe(
+            df_display_pairs,
+            column_config={
+                "Para": st.column_config.TextColumn("Para (Dwójka)", width="small"),
+                "PairScore": st.column_config.ProgressColumn("Siła Pary", format="%.1f pkt", min_value=0, max_value=100),
+                "Razem w oknie": st.column_config.TextColumn("Razem (Okno)", width="small"),
+                "Przejścia T+1 (Okno)": st.column_config.TextColumn("T+1 (Okno)", width="small"),
+                "Przejścia T+1 (120 los.)": st.column_config.TextColumn("T+1 (120 los.)", width="small"),
+                "Przejścia T+1 (Cała baza)": st.column_config.TextColumn("T+1 (Baza)", width="medium"),
+                "Status Pary": st.column_config.TextColumn("Status", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=560,
+            key="pred_pairs_ranking_tbl"
+        )
+
+    # --- BACKTEST NA 30 LOSOWANIACH WSTECZ ---
+    st.divider()
+    st.subheader(f"🧪 Weryfikacja wsteczna algorytmu (ostatnie {backtest_steps} losowań)")
+    st.caption(
+        f"Sprawdzenie krok po kroku na dystansie **{backtest_steps} losowań**, jak trafiały wytypowane przez algorytm koszyki "
+        f"**TOP 5**, **TOP 8** oraz wskazana **Para Nr 1**."
+    )
+
+    bt_rows = []
+    total_top5_hits = 0
+    total_top8_hits = 0
+    pair_at_least_one_hits = 0
+    pair_full_2of2_hits = 0
+
+    for step_t in range(latest_idx - 1, latest_idx - 1 - backtest_steps, -1):
+        df_step_pred, df_step_pairs = score_draw_at_index(step_t)
+        next_actual_set = all_sets[step_t + 1]
+
+        top5_nums = df_step_pred.head(5)["Liczba"].tolist()
+        top8_nums = df_step_pred.head(8)["Liczba"].tolist()
+
+        hits_5 = [n for n in top5_nums if n in next_actual_set]
+        hits_8 = [n for n in top8_nums if n in next_actual_set]
+
+        total_top5_hits += len(hits_5)
+        total_top8_hits += len(hits_8)
+
+        # Sprawdzenie najlepszej pary (TOP 1 para) z danego kroku
+        top1_pair_row = df_step_pairs.iloc[0]
+        p_b1, p_b2 = int(top1_pair_row["b1"]), int(top1_pair_row["b2"])
+        p_hits = (1 if p_b1 in next_actual_set else 0) + (1 if p_b2 in next_actual_set else 0)
+        if p_hits >= 1:
+            pair_at_least_one_hits += 1
+        if p_hits == 2:
+            pair_full_2of2_hits += 1
+
+        formatted_top5 = " ".join(
+            f"[{n:02d}]🟩" if n in next_actual_set else f"{n:02d}"
+            for n in top5_nums
+        )
+        formatted_pair = (
+            f"[{p_b1:02d}]🟩 - [{p_b2:02d}]🟩 (2/2!)" if p_hits == 2 else
+            (f"[{p_b1:02d}]🟩 - {p_b2:02d} (1/2)" if p_b1 in next_actual_set else
+             (f"{p_b1:02d} - [{p_b2:02d}]🟩 (1/2)" if p_b2 in next_actual_set else f"{p_b1:02d} - {p_b2:02d} (0/2)"))
+        )
+
+        bt_rows.append({
+            "Z losowania": f"#{all_ids[step_t]} ({all_times[step_t]})",
+            "Do losowania (T+1)": f"#{all_ids[step_t + 1]}",
+            "Wytypowane TOP 5 (🟩=Trafione)": formatted_top5,
+            "Trafienia TOP 5": f"{len(hits_5)} / 5",
+            "Trafienia TOP 8": f"{len(hits_8)} / 8",
+            "Najmocniejsza Para (TOP 1)": formatted_pair
+        })
+
+    avg_top5 = (total_top5_hits / (backtest_steps * 5)) * 100
+    avg_top8 = (total_top8_hits / (backtest_steps * 8)) * 100
+    pair_1plus_pct = (pair_at_least_one_hits / backtest_steps) * 100
+
+    st.info(
+        f"📈 **Podsumowanie z {backtest_steps} losowań wstecz:**\n"
+        f"- **TOP 5 liczb:** łącznie **{total_top5_hits} trafień** na {backtest_steps*5} typów (**{avg_top5:.1f}%** skuteczności)\n"
+        f"- **TOP 8 liczb:** łącznie **{total_top8_hits} trafień** na {backtest_steps*8} typów (**{avg_top8:.1f}%** skuteczności)\n"
+        f"- **Para Nr 1:** w **{pair_at_least_one_hits}/{backtest_steps}** losowań ({pair_1plus_pct:.1f}%) weszła przynajmniej 1 liczba z pary, "
+        f"a pełna dwójka (2/2) powtórzyła się **{pair_full_2of2_hits}x** *(losowe tło Keno to 28.6% dla pojedynczej kuli i ~8.0% dla pełnej dwójki)*."
+    )
+
+    st.dataframe(
+        pd.DataFrame(bt_rows),
+        hide_index=True,
+        use_container_width=True,
+        height=620,
+        key="pred_backtest_30_tbl"
+    )
+
+# Wywołanie modułu predykcyjnego na dole strony (domyślnie okno 20 i backtest na 30 losowań):
+render_prediction_algorithm(df, window_size=20, backtest_steps=30)
+
+
+
+
+
+
+
+
+
+
+# =====================================================================
 # MODUŁ ALGORYTMU PREDEKCYJNEGO: WSKAZANIE NASTĘPNYCH TRAFIEŃ (T+1)
 # =====================================================================
 def render_prediction_algorithm(df_full, window_size=20, backtest_steps=15):
