@@ -571,6 +571,9 @@ render_keno_section(section_id=1, default_top_val=20)
 # =====================================================================
 # MODUŁ ALGORYTMU PREDYKCYJNEGO: CZĘSTOTLIWOŚĆ + PARY + BACKTEST (30 LOS.)
 # =====================================================================
+from collections import defaultdict
+from itertools import combinations
+
 def render_prediction_algorithm(df_full, window_size=20, backtest_steps=30):
     st.divider()
     st.header("🧠 Algorytm Wskazujący Następne Trafienia (Węzły T+1 + Częstotliwość + Pary)")
