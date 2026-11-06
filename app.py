@@ -582,7 +582,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
 
     # 1. Konfiguracja okna analizy (od 10 losowań, domyślnie 15) oraz długości Backtestu (domyślnie 100) z pamięcią w URL
     pred_options = [10, 12, 15, 20, 25, 30, 50]
-    bt_options = [30, 50, 100, 150, 200]
+    bt_options = [15, 30, 50, 100, 200]
 
     if "pred_win_saved" not in st.session_state:
         url_val = st.query_params.get("pred_win", str(default_window))
