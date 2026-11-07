@@ -1000,56 +1000,48 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             f"</div>"
         )
 
-    green_hero_html = f"""
-    <div style='background: linear-gradient(135deg, rgba(16, 54, 39, 0.95) 0%, rgba(13, 38, 29, 0.95) 100%);
-                border: 2px solid #00e676; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
-                box-shadow: 0 4px 15px rgba(0, 230, 118, 0.18); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;'>
-        <div style='font-size: 14px; font-weight: bold; color: #b9f6ca; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>
-            🎯 Wskazanie Algorytmu V4 (Okno {window_size}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})
-        </div>
-
-        <div style='margin-bottom: 14px;'>
-            <div style='font-size: 13px; color: #ffd166; font-weight: bold; margin-bottom: 6px;'>
-                🏆 ZŁOTE LOKATY Z TOP 5 (2 najpewniejsze miejsca wg ostatnich {actual_bt_steps} gier):
-            </div>
-            <div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center;'>
-                <div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45);
-                            border: 2.5px solid #ffd166; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(255, 209, 102, 0.35);'>
-                    <span style='font-size: 14px; color: #ffd166; font-weight: bold;'>Typ #{best_slot_1} ➔ Kula</span>
-                    <span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #e63946; padding: 2px 11px; border-radius: 8px; border: 2px solid #ffffff;'>
-                        {int(golden_row_1['Liczba']):02d}
-                    </span>
-                    <span style='font-size: 16px; font-weight: 800; color: #4da6ff;'>
-                        Poz. {int(golden_row_1['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_1['blue_m']):02d})</span>
-                    </span>
-                    <span style='font-size: 13px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_1:.1f}%</span>
-                </div>
-
-                <div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45);
-                            border: 2.5px solid #00e676; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);'>
-                    <span style='font-size: 14px; color: #00e676; font-weight: bold;'>Typ #{best_slot_2} ➔ Kula</span>
-                    <span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #0077b6; padding: 2px 11px; border-radius: 8px; border: 2px solid #ffffff;'>
-                        {int(golden_row_2['Liczba']):02d}
-                    </span>
-                    <span style='font-size: 16px; font-weight: 800; color: #4da6ff;'>
-                        Poz. {int(golden_row_2['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_2['blue_m']):02d})</span>
-                    </span>
-                    <span style='font-size: 13px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_2:.1f}%</span>
-                </div>
-            </div>
-        </div>
-
-        <div style='margin-bottom: 10px;'>
-            <div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 4px;'>🔥 Pełne TOP 5 Liczb (#1 – #5):</div>
-            <div>{top5_badges_html}</div>
-        </div>
-
-        <div style='display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; color: #e6e6e6; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.15);'>
-            <div>⭐ <b>W kolumnie 'Najczęstsza' (Tabela 1):</b> <span style='font-size:17px; font-weight:900; color:#ffd166;'>{curr_modes_str}</span></div>
-            <div>📌 <b>Koszyk TOP 8:</b> <span style='font-size:17px; font-weight:900; color:#00e676;'>{top8_balls_only}</span></div>
-        </div>
-    </div>
-    """
+    green_hero_html = (
+        f"<div style='background: linear-gradient(135deg, rgba(16, 54, 39, 0.95) 0%, rgba(13, 38, 29, 0.95) 100%); "
+        f"border: 2px solid #00e676; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; "
+        f"box-shadow: 0 4px 15px rgba(0, 230, 118, 0.18); font-family: sans-serif;'>"
+        f"<div style='font-size: 14px; font-weight: bold; color: #b9f6ca; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>"
+        f"🎯 Wskazanie Algorytmu V4 (Okno {window_size}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
+        f"</div>"
+        f"<div style='margin-bottom: 14px;'>"
+        f"<div style='font-size: 13px; color: #ffd166; font-weight: bold; margin-bottom: 8px;'>"
+        f"🏆 ZŁOTE LOKATY Z TOP 5 (2 najpewniejsze miejsca wg ostatnich {actual_bt_steps} gier):"
+        f"</div>"
+        f"<div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center;'>"
+        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
+        f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(255, 209, 102, 0.35);'>"
+        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Typ #{best_slot_1} ➔ Kula</span>"
+        f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #e63946; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
+        f"{int(golden_row_1['Liczba']):02d}</span>"
+        f"<span style='font-size: 17px; font-weight: 800; color: #4da6ff;'>"
+        f"Poz. {int(golden_row_1['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_1['blue_m']):02d})</span></span>"
+        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_1:.1f}%</span>"
+        f"</div>"
+        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
+        f"border: 2.5px solid #00e676; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);'>"
+        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Typ #{best_slot_2} ➔ Kula</span>"
+        f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #0077b6; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
+        f"{int(golden_row_2['Liczba']):02d}</span>"
+        f"<span style='font-size: 17px; font-weight: 800; color: #4da6ff;'>"
+        f"Poz. {int(golden_row_2['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_2['blue_m']):02d})</span></span>"
+        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_2:.1f}%</span>"
+        f"</div>"
+        f"</div>"
+        f"</div>"
+        f"<div style='margin-bottom: 10px;'>"
+        f"<div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 6px;'>🔥 Pełne TOP 5 Liczb (#1 – #5):</div>"
+        f"<div>{top5_badges_html}</div>"
+        f"</div>"
+        f"<div style='display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; color: #e6e6e6; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);'>"
+        f"<div>⭐ <b>W kolumnie 'Najczęstsza' (Tabela 1):</b> <span style='font-size:18px; font-weight:900; color:#ffd166;'>{curr_modes_str}</span></div>"
+        f"<div>📌 <b>Koszyk TOP 8:</b> <span style='font-size:18px; font-weight:900; color:#00e676;'>{top8_balls_only}</span></div>"
+        f"</div>"
+        f"</div>"
+    )
     st.markdown(green_hero_html, unsafe_allow_html=True)
 
     col_pred_table, col_hot_all = st.columns([1.45, 0.95], gap="large")
