@@ -574,15 +574,14 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V4 (BEZ PAR):
-# DOMINACJA TABELI NIEBIESKIEJ 🟦 (40 PKT) + ŚCIEŻKI ⬜/🔴 (35 PKT) + NAJCZĘSTSZA (25 PKT)
-# + DUŻE, WYRAŹNE KAFELKI DLA ZŁOTYCH LOKAT I TOP 5
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V5:
+# 100% SYNCHRONIZACJI Z TABELĄ NIEBIESKĄ 🟦 + ZŁOTE LOKATY BEZPOŚREDNIO Z LIDERÓW 🟦
 # =====================================================================
 from collections import defaultdict
 
 def render_prediction_algorithm(df_full, default_window=15, default_backtest=100):
     st.divider()
-    st.header("🧠 Algorytm Wskazujący Następne Trafienia (Tabela Niebieska 🟦 + Węzły ⬜/🔴 + 'Najczęstsza')")
+    st.header("🧠 Algorytm Wskazujący Następne Trafienia V5 (Liderzy Tabeli Niebieskiej 🟦 + Węzły ⬜/🔴 + 'Najczęstsza')")
 
     pred_options = [10, 12, 15, 20, 25, 30, 50]
     bt_options = [30, 50, 100, 150, 200]
@@ -606,7 +605,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
     col_cfg1, col_cfg2 = st.columns([1.2, 1])
     with col_cfg1:
         window_size = st.radio(
-            "⚙️ 1. Wybierz okno analizy dla Algorytmu (zalecane 15 lub 20 — zgodnie z Tabelą 1):",
+            "⚙️ 1. Wybierz okno analizy dla Algorytmu (ustaw takie samo jak w Pierwszej Tabeli, np. 15):",
             options=pred_options,
             index=pred_options.index(st.session_state.pred_win_saved),
             horizontal=True,
@@ -623,7 +622,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             on_change=update_pred_params
         )
 
-    blue_lookback = 15  # Stałe okno 15 losowań dla Tabeli Niebieskiej
+    blue_lookback = 15  # Dokładnie 15 losowań sprawdzanych w Tabeli Niebieskiej
     max_possible_bt = max(10, len(df_full) - window_size - blue_lookback - 3)
     actual_bt_steps = min(backtest_steps, max_possible_bt)
 
@@ -638,7 +637,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
     total_draws = len(df_full)
 
     # -----------------------------------------------------------------
-    # WSTĘPNE OBLICZENIE UKŁADU TABELI 1 ORAZ TABELI NIEBIESKIEJ 🟦 W KAŻDYM KROKU
+    # WSTĘPNE OBLICZENIE UKŁADU TABELI 1 ORAZ TABELI NIEBIESKIEJ 🟦 (1:1 Z WIDOKIEM GÓRNYM)
     # -----------------------------------------------------------------
     earliest_needed = max(window_size - 1, total_draws - 1 - actual_bt_steps - blue_lookback - 2)
     step_meta = {}
@@ -652,40 +651,40 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         curr_l = all_lists[t_i]
         next_s = all_sets[t_i + 1] if (t_i + 1 < total_draws) else set()
 
-        pos_ranking = []
+        pos_temp = []
         pos_modes = {}
         all_modes_set = set()
 
-        for p_idx in range(20):
-            pos_nr = p_idx + 1
-            p_hits = sum(1 for k in range(n_trans) if w_lists[k][p_idx] in w_sets[k + 1])
-            
+        for i in range(1, 21):
+            p_idx = i - 1
+            repeat_t1_count = sum(1 for k in range(n_trans) if w_lists[k][p_idx] in w_sets[k + 1])
+
             col_vals = [w_lists[k][p_idx] for k in range(len(w_lists))]
             s_col = pd.Series(col_vals)
             m_val = int(s_col.mode().iloc[0])
             m_cnt = int((s_col == m_val).sum())
-            pos_modes[pos_nr] = (m_val, m_cnt)
+            pos_modes[i] = (m_val, m_cnt)
             if m_cnt >= min_mode_threshold:
                 all_modes_set.add(m_val)
 
-            pos_ranking.append({
-                "orig_pos": pos_nr,
-                "white_hits": p_hits,
+            pos_temp.append({
+                "orig_pos": i,
+                "raw_hits": repeat_t1_count,
                 "ball": curr_l[p_idx]
             })
 
-        # Stabilne sortowanie jak w Tabeli 1 -> wyznacza kolumny M.1 .. M.20 w Tabeli Niebieskiej
-        df_rank_tmp = pd.DataFrame(pos_ranking).sort_values(
-            by="white_hits", ascending=False, kind="mergesort"
+        # Identyczne sortowanie mergesort jak w górnej Tabeli Niebieskiej (Tryb B)
+        df_rank_step = pd.DataFrame(pos_temp).sort_values(
+            by="raw_hits", ascending=False, kind="mergesort"
         ).reset_index(drop=True)
 
         blue_col_for_orig_pos = {}
         blue_hit_by_col = {}
-        for rank_idx, r_item in df_rank_tmp.iterrows():
+        for rank_idx, r_item in df_rank_step.iterrows():
             m_col = rank_idx + 1
             o_pos = int(r_item["orig_pos"])
             b_val = int(r_item["ball"])
-            w_hits = int(r_item["white_hits"])
+            w_hits = int(r_item["raw_hits"])
             blue_col_for_orig_pos[o_pos] = (m_col, w_hits)
             blue_hit_by_col[m_col] = (b_val in next_s) if (t_i + 1 < total_draws) else False
 
@@ -697,7 +696,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         }
 
     # -----------------------------------------------------------------
-    # GŁÓWNA FUNKCJA OCENIAJĄCA (SCORING 0-100 PKT — BEZ PAR)
+    # GŁÓWNA FUNKCJA OCENIAJĄCA (SCORING 0-100 PKT + WYBÓR ZŁOTYCH LOKAT Z TABELI NIEBIESKIEJ)
     # -----------------------------------------------------------------
     def score_draw_at_index(t_idx):
         win_start = t_idx - window_size + 1
@@ -714,18 +713,19 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         pos_modes_now = meta_now["pos_modes"]
         all_modes_set_now = meta_now["all_modes_set"]
 
-        # 1. Skuteczność kolumn M.1..M.20 w Tabeli Niebieskiej 🟦 (z 15 losowań) + Stałe trafienia pozycji P01..P20
+        # 1. Dokładne zliczenie trafień kolumn M.1..M.20 oraz stałych trafień pozycji w oknie 15 losowań
         blue_col_hits_15 = {m: 0 for m in range(1, 21)}
         orig_pos_hits_15 = {p: 0 for p in range(1, 21)}
         blue_steps_avail = 0
 
-        for b_t in range(max(earliest_needed, t_idx - blue_lookback), t_idx):
+        start_b = max(earliest_needed, t_idx - blue_lookback)
+        for b_t in range(start_b, t_idx):
             blue_steps_avail += 1
             b_hits_map = step_meta[b_t]["blue_hit_by_col"]
             for m_c in range(1, 21):
                 if b_hits_map.get(m_c, False):
                     blue_col_hits_15[m_c] += 1
-            # Sprawdzamy też stałe trafienia oryginalnej pozycji w ostatnich 15 losowaniach
+
             b_nums = all_lists[b_t]
             b_next_set = all_sets[b_t + 1]
             for p_i in range(20):
@@ -744,7 +744,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
                 if k_idx < trans_count and b in win_sets[k_idx + 1]:
                     win_ball_t1_repeats[b] += 1
 
-        # 3. Białe kwadraty ⬜ bezpośrednio w wierszu t-1 i t-2 (drabinka pod pozycją)
+        # 3. Białe kwadraty ⬜ bezpośrednio w wierszu t-1 i t-2
         sq_1_step_ago = {p: False for p in range(1, 21)}
         sq_2_steps_ago = {p: False for p in range(1, 21)}
         if t_idx >= 1:
@@ -764,59 +764,62 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             ball = curr_nums[p_i]
 
             # =================================================================
-            # FILAR 1 (DO 40 PKT): TABELA NIEBIESKA 🟦 (GŁÓWNY MOTOR TRAFIEŃ)
+            # FILAR 1 (DO 45 PKT): TABELA NIEBIESKA 🟦 (DOKŁADNE TRAFIENIA KOLUMNY M + STAŁE TRAF. POZYCJI)
             # =================================================================
             m_col, pos_white_hits = blue_col_map_now[pos_nr]
             b_hits_cnt = blue_col_hits_15[m_col]
             b_hit_rate = b_hits_cnt / max(1, blue_steps_avail)
+            orig_15_cnt = orig_pos_hits_15[pos_nr]
+            orig_15_rate = orig_15_cnt / max(1, blue_steps_avail)
 
-            # Punkty za skuteczność kolumny M w Tabeli Niebieskiej (np. Miejsce 15 mające 8/15 = 53.3% dostaje max 26 pkt!)
-            pts_blue_rate = min(26.0, (b_hit_rate / 0.50) * 26.0)
+            # Punkty za skuteczność kolumny M w Tabeli Niebieskiej (0 - 25 pkt)
+            pts_blue_col = min(25.0, (b_hit_rate / 0.50) * 25.0)
 
-            # Punkty za niebieski kwadrat 🟦 bezpośrednio pod tym miejscem (w wierszu t-1 i t-2) (0 - 14 pkt)
+            # Punkty za stałe trafienia tej oryginalnej pozycji w ostatnich 15 grach (0 - 8 pkt)
+            pts_orig_15 = min(8.0, (orig_15_rate / 0.45) * 8.0)
+
+            # Punkty za pionową ścieżkę niebieskich kwadratów pod tym miejscem (w t-1 i t-2) (0 - 12 pkt)
             b_under_1 = prev1_blue_hits.get(m_col, False)
             b_under_2 = prev2_blue_hits.get(m_col, False)
             b_adj_1 = prev1_blue_hits.get(m_col - 1, False) or prev1_blue_hits.get(m_col + 1, False)
 
             if b_under_1 and b_under_2:
-                pts_blue_streak = 14.0
+                pts_blue_streak = 12.0
             elif b_under_1:
-                pts_blue_streak = 10.0
+                pts_blue_streak = 8.5
             elif b_adj_1:
-                pts_blue_streak = 5.0
+                pts_blue_streak = 4.5
             else:
                 pts_blue_streak = 0.0
 
-            score_blue_total = round(min(40.0, pts_blue_rate + pts_blue_streak), 1)
+            score_blue_total = round(min(45.0, pts_blue_col + pts_orig_15 + pts_blue_streak), 1)
 
             # =================================================================
-            # FILAR 2 (DO 35 PKT): BIAŁE KWADRATY ⬜ I CZERWONE KÓŁKA 🔴 W TABELI 1
+            # FILAR 2 (DO 30 PKT): BIAŁE KWADRATY ⬜ I CZERWONE KÓŁKA 🔴 W TABELI 1
             # =================================================================
             pos_rate = pos_white_hits / trans_count if trans_count > 0 else 0
-            pts_white_pos = min(15.0, (pos_rate / 0.50) * 15.0)
+            pts_white_pos = min(12.0, (pos_rate / 0.50) * 12.0)
 
-            # Pionowy słupek białych kwadratów ⬜ pod pozycją (0 - 10 pkt)
             sq_direct_1 = sq_1_step_ago[pos_nr]
             sq_direct_2 = sq_2_steps_ago[pos_nr]
             sq_neighbor_1 = sq_1_step_ago.get(pos_nr - 1, False) or sq_1_step_ago.get(pos_nr + 1, False)
 
             if sq_direct_1 and sq_direct_2:
-                pts_white_ladder = 10.0
+                pts_white_ladder = 9.0
             elif sq_direct_1 and sq_neighbor_1:
-                pts_white_ladder = 8.0
+                pts_white_ladder = 7.0
             elif sq_direct_1 or sq_neighbor_1:
-                pts_white_ladder = 4.5
+                pts_white_ladder = 4.0
             else:
                 pts_white_ladder = 0.0
 
-            # Czerwone kółko 🔴 na obecnej liczbie (0 - 10 pkt)
             in_prev1 = (ball in prev_set)
             in_prev2 = (ball in prev2_set)
             if in_prev1 and not in_prev2:
-                pts_red_circle = 10.0  # Świeże trafienie z T-1 (czerwone kółko)
+                pts_red_circle = 9.0
                 node_str = "🔴 Świeże z T-1"
             elif in_prev1 and in_prev2:
-                pts_red_circle = 6.5   # Seria 3+
+                pts_red_circle = 6.0
                 node_str = "🔥🔥 Seria 3+"
             else:
                 pts_red_circle = 2.0
@@ -825,7 +828,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             if sq_direct_1:
                 node_str += " + ⬜ pod nią"
 
-            score_white_red_total = round(min(35.0, pts_white_pos + pts_white_ladder + pts_red_circle), 1)
+            score_white_red_total = round(min(30.0, pts_white_pos + pts_white_ladder + pts_red_circle), 1)
 
             # =================================================================
             # FILAR 3 (DO 25 PKT): KOLUMNA "NAJCZĘSTSZA" + ZŁOTY ŚRODEK CZĘSTOTLIWOŚCI
@@ -861,7 +864,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             if ideal_min <= ball_freq_in_win <= ideal_max:
                 pts_freq_sweet = 10.0
             elif ball_freq_in_win > ideal_max:
-                pts_freq_sweet = 6.0
+                pts_freq_sweet = 6.5
             elif ball_freq_in_win == ideal_min - 1:
                 pts_freq_sweet = 5.0
             else:
@@ -871,46 +874,66 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             score_freq_mode_total = round(min(25.0, pts_mode_match + pts_freq_sweet + pts_ball_t1), 1)
 
             total_score = round(score_blue_total + score_white_red_total + score_freq_mode_total, 1)
+            support_score = round(score_white_red_total + score_freq_mode_total + (orig_15_cnt * 1.5), 1)
 
             candidates.append({
                 "pos_nr": pos_nr,
                 "blue_m": m_col,
+                "b_hits_cnt": b_hits_cnt,
+                "b_hit_pct": round(b_hit_rate * 100.0, 1),
+                "orig_15_cnt": orig_15_cnt,
+                "support_score": support_score,
                 "Pozycja": f"Poz. {pos_nr:02d} (🟦 M.{m_col:02d})",
                 "Liczba": ball,
                 "Score": total_score,
                 "blue_raw": score_blue_total,
                 "freq_raw": ball_freq_in_win,
-                "🟦 Pkt Niebieska": f"{score_blue_total:.1f}/40 ({b_hits_cnt}/{blue_steps_avail} 🟦)",
-                "⬜/🔴 Pkt Tabela 1": f"{score_white_red_total:.1f}/35 ({node_str})",
+                "🟦 Pkt Niebieska": f"{score_blue_total:.1f}/45 ({b_hits_cnt}/{blue_steps_avail} 🟦 | stałe:{orig_15_cnt})",
+                "⬜/🔴 Pkt Tabela 1": f"{score_white_red_total:.1f}/30 ({node_str})",
                 "⭐ Pula 'Najczęstsza'": mode_status_str,
                 "Częstość w oknie": f"{ball_freq_in_win}x/{window_size} (powt. T+1: {ball_t1_in_win}x)",
                 "Najczęstsza na Poz.": f"{mode_on_pos:02d} (x{mode_cnt_on_pos})"
             })
 
+        # Główny ranking TOP 5 (sortowany po łącznym Score, a przy remisie po trafieniach w Tabeli Niebieskiej)
         df_cand = pd.DataFrame(candidates).sort_values(
-            by=["Score", "blue_raw", "pos_nr"], ascending=[False, False, True], kind="mergesort"
+            by=["Score", "b_hits_cnt", "pos_nr"], ascending=[False, False, True], kind="mergesort"
         ).reset_index(drop=True)
 
-        return df_cand, win_ball_freq, win_ball_t1_repeats, all_modes_set_now
+        # WYBÓR 2 ZŁOTYCH LOKAT BEZPOŚREDNIO Z LIDERÓW TABELI NIEBIESKIEJ 🟦
+        # Sortujemy po liczbie trafień w Tabeli Niebieskiej (b_hits_cnt), a przy remisie (np. dwie kolumny po 6/15)
+        # decyduje wyższy łączny Score (wsparcie z Tabeli 1 i częstotliwości)!
+        df_blue_leaders = pd.DataFrame(candidates).sort_values(
+            by=["b_hits_cnt", "Score", "orig_15_cnt"], ascending=[False, False, False], kind="mergesort"
+        ).reset_index(drop=True)
+
+        return df_cand, df_blue_leaders, win_ball_freq, win_ball_t1_repeats, all_modes_set_now
 
     # --- OBLICZENIE NA ŻYWO ORAZ BACKTESTU NA 100 LOSOWANIACH ---
     latest_idx = total_draws - 1
-    df_predictions, latest_win_freq, latest_win_t1, latest_modes_set = score_draw_at_index(latest_idx)
+    df_predictions, df_latest_blue_leaders, latest_win_freq, latest_win_t1, latest_modes_set = score_draw_at_index(latest_idx)
     latest_curr_set = all_sets[latest_idx]
 
     top_5_Row = df_predictions.head(5)
     top_8_Row = df_predictions.head(8)
 
+    # 2 Złote Lokaty wybrane bezpośrednio z liderów Tabeli Niebieskiej 🟦 (wspartych punktacją Score)
+    golden_row_1 = df_latest_blue_leaders.iloc[0]
+    golden_row_2 = df_latest_blue_leaders.iloc[1]
+
     bt_html_rows = []
     total_top5_hits = 0
     total_top8_hits = 0
+    golden_1_bt_hits = 0
+    golden_2_bt_hits = 0
+    golden_at_least_one_bt = 0
 
     top5_slot_hits = {slot: 0 for slot in range(1, 6)}
     keno_pos_in_top5_selected = {p: 0 for p in range(1, 21)}
     keno_pos_in_top5_hits = {p: 0 for p in range(1, 21)}
 
     for step_t in range(latest_idx - 1, latest_idx - 1 - actual_bt_steps, -1):
-        df_step_pred, _, _, _ = score_draw_at_index(step_t)
+        df_step_pred, df_step_blue_lead, _, _, _ = score_draw_at_index(step_t)
         next_actual_set = all_sets[step_t + 1]
 
         top5_df = df_step_pred.head(5)
@@ -918,6 +941,20 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
 
         top5_nums = top5_df["Liczba"].tolist()
         top8_nums = top8_df["Liczba"].tolist()
+
+        # Sprawdzenie, jak w tym kroku trafiły 2 Złote Lokaty (Lider #1 i Lider #2 z Tabeli Niebieskiej)
+        g1_ball = int(df_step_blue_lead.iloc[0]["Liczba"])
+        g2_ball = int(df_step_blue_lead.iloc[1]["Liczba"])
+        g1_m = int(df_step_blue_lead.iloc[0]["blue_m"])
+        g2_m = int(df_step_blue_lead.iloc[1]["blue_m"])
+        g1_hit = (g1_ball in next_actual_set)
+        g2_hit = (g2_ball in next_actual_set)
+        if g1_hit:
+            golden_1_bt_hits += 1
+        if g2_hit:
+            golden_2_bt_hits += 1
+        if g1_hit or g2_hit:
+            golden_at_least_one_bt += 1
 
         slot_cells_html = []
         for slot_idx, (_, r_pred) in enumerate(top5_df.iterrows()):
@@ -936,16 +973,21 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
                     f"width:58px; height:36px; border:2px solid #00e676; border-radius:6px; "
                     f"background-color:rgba(0, 230, 118, 0.28); color:#ffffff; font-weight:bold; box-shadow:0 0 6px rgba(0,230,118,0.5);'>"
                     f"<span style='font-size:14px; line-height:14px;'>{b_val:02d}</span>"
-                    f"<span style='font-size:9px; color:#b9f6ca; line-height:10px;'>P{k_pos:02d}|M.{b_m}</span></div>"
+                    f"<span style='font-size:9px; color:#b9f6ca; line-height:10px;'>P{k_pos:02d}|M.{b_m:02d}</span></div>"
                 )
             else:
                 cell_box = (
                     f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
                     f"width:58px; height:36px; border:1px solid #2b303c; border-radius:6px; background-color:#151821;'>"
                     f"<span style='font-size:13px; color:#a8b0c0; line-height:14px;'>{b_val:02d}</span>"
-                    f"<span style='font-size:9px; color:#6c7385; line-height:10px;'>P{k_pos:02d}|M.{b_m}</span></div>"
+                    f"<span style='font-size:9px; color:#6c7385; line-height:10px;'>P{k_pos:02d}|M.{b_m:02d}</span></div>"
                 )
             slot_cells_html.append(f"<td style='padding:4px 4px; text-align:center; border-right:1px solid #232731;'>{cell_box}</td>")
+
+        # Komórka pokazująca trafienia 2 Złotych Lokat 🟦 w danym losowaniu
+        g1_badge = f"<span style='padding:2px 6px; border:1.5px solid #ffd166; border-radius:4px; background:rgba(255,209,102,0.28); color:#fff; font-weight:bold;'>{g1_ball:02d}(M.{g1_m})🟩</span>" if g1_hit else f"<span style='color:#9da3af;'>{g1_ball:02d}(M.{g1_m})</span>"
+        g2_badge = f"<span style='padding:2px 6px; border:1.5px solid #00e676; border-radius:4px; background:rgba(0,230,118,0.25); color:#fff; font-weight:bold;'>{g2_ball:02d}(M.{g2_m})🟩</span>" if g2_hit else f"<span style='color:#9da3af;'>{g2_ball:02d}(M.{g2_m})</span>"
+        golden_cell_html = f"{g1_badge} &nbsp; {g2_badge}"
 
         hits_5_cnt = sum(1 for n in top5_nums if n in next_actual_set)
         hits_8_cnt = sum(1 for n in top8_nums if n in next_actual_set)
@@ -960,6 +1002,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         <tr style='border-bottom: 1px solid #262a34;'>
             <td style='padding: 6px 8px; color: #9da3af; white-space: nowrap; font-size: 11px;'>#{all_ids[step_t]}<br><span style='font-size:10px; color:#6c7385;'>({all_times[step_t]})</span></td>
             <td style='padding: 6px 8px; font-weight: bold; color: #ffffff; white-space: nowrap; font-size: 11px; border-right:2px solid #333945;'>#{all_ids[step_t + 1]}</td>
+            <td style='padding: 6px 8px; text-align: center; white-space: nowrap; font-size: 11px; border-right:2px solid #333945;'>{golden_cell_html}</td>
             {''.join(slot_cells_html)}
             <td style='padding: 6px 8px; text-align: center; font-weight: bold; font-size: 13px; color: {h5_color}; background-color: {h5_bg}; border-left:2px solid #333945;'>{hits_5_cnt} / 5</td>
             <td style='padding: 6px 8px; text-align: center; font-weight: bold; font-size: 13px; color: #4da6ff;'>{hits_8_cnt} / 8</td>
@@ -970,25 +1013,22 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
     sorted_slots = sorted(range(1, 6), key=lambda s: top5_slot_hits[s], reverse=True)
     best_slot_1, best_slot_2 = sorted_slots[0], sorted_slots[1]
 
-    golden_row_1 = top_5_Row.iloc[best_slot_1 - 1]
-    golden_row_2 = top_5_Row.iloc[best_slot_2 - 1]
-    golden_pct_1 = (top5_slot_hits[best_slot_1] / actual_bt_steps) * 100.0
-    golden_pct_2 = (top5_slot_hits[best_slot_2] / actual_bt_steps) * 100.0
-
     curr_in_modes = [b for b in all_lists[latest_idx] if b in latest_modes_set]
     curr_modes_str = ", ".join(f"{b:02d}" for b in curr_in_modes) if curr_in_modes else "brak"
     top8_balls_only = ", ".join(f"{int(r['Liczba']):02d}" for _, r in top_8_Row.iterrows())
 
     # =====================================================================
-    # NOWY, BARDZO CZYTELNY ZIELONY BLOK Z DUŻYMI CYFRAMI KUL I POZYCJI
+    # ZIELONY BLOK REKOMENDACJI Z DUŻYMI CYFRAMI (ZŁOTE LOKATY BEZPOŚREDNIO Z LIDERÓW 🟦)
     # =====================================================================
+    gold_balls_set = {int(golden_row_1["Liczba"]), int(golden_row_2["Liczba"])}
     top5_badges_html = ""
     for idx_r, (_, r) in enumerate(top_5_Row.iterrows()):
         s_nr = idx_r + 1
         b_num = int(r["Liczba"])
         p_num = int(r["pos_nr"])
         m_num = int(r["blue_m"])
-        is_gold = s_nr in [best_slot_1, best_slot_2]
+        b_cnt = int(r["b_hits_cnt"])
+        is_gold = b_num in gold_balls_set
         border_col = "#ffd166" if is_gold else "#00e676"
         bg_col = "rgba(255, 209, 102, 0.18)" if is_gold else "rgba(0, 230, 118, 0.14)"
         top5_badges_html += (
@@ -996,7 +1036,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             f"border:2px solid {border_col}; border-radius:8px; background:{bg_col};'>"
             f"<span style='font-size:13px; color:#d0d7de; font-weight:600;'>#{s_nr}:</span>"
             f"<span style='font-size:22px; font-weight:900; color:#ffffff; letter-spacing:0.5px;'>{b_num:02d}</span>"
-            f"<span style='font-size:13px; font-weight:bold; color:#ffd166;'>(Poz. {p_num:02d} | 🟦 M.{m_num:02d})</span>"
+            f"<span style='font-size:13px; font-weight:bold; color:#ffd166;'>(Poz. {p_num:02d} | 🟦 M.{m_num:02d} — {b_cnt}/15)</span>"
             f"</div>"
         )
 
@@ -1005,35 +1045,35 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         f"border: 2px solid #00e676; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; "
         f"box-shadow: 0 4px 15px rgba(0, 230, 118, 0.18); font-family: sans-serif;'>"
         f"<div style='font-size: 14px; font-weight: bold; color: #b9f6ca; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>"
-        f"🎯 Wskazanie Algorytmu V4 (Okno {window_size}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
+        f"🎯 Wskazanie Algorytmu V5 (Okno {window_size}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
         f"</div>"
         f"<div style='margin-bottom: 14px;'>"
         f"<div style='font-size: 13px; color: #ffd166; font-weight: bold; margin-bottom: 8px;'>"
-        f"🏆 ZŁOTE LOKATY Z TOP 5 (2 najpewniejsze miejsca wg ostatnich {actual_bt_steps} gier):"
+        f"🏆 ZŁOTE LOKATY (2 najsilniejsze kolumny bezpośrednio z Tabeli Pozycji Trafień 🟦 wsparte Tabelą 1):"
         f"</div>"
         f"<div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center;'>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(255, 209, 102, 0.35);'>"
-        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Typ #{best_slot_1} ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Lider #1 🟦 ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #e63946; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_1['Liczba']):02d}</span>"
         f"<span style='font-size: 17px; font-weight: 800; color: #4da6ff;'>"
         f"Poz. {int(golden_row_1['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_1['blue_m']):02d})</span></span>"
-        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_1:.1f}%</span>"
+        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— w Tabeli 🟦: {int(golden_row_1['b_hits_cnt'])}/15 ({golden_row_1['b_hit_pct']:.1f}%)</span>"
         f"</div>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #00e676; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);'>"
-        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Typ #{best_slot_2} ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Lider #2 🟦 ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #0077b6; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_2['Liczba']):02d}</span>"
         f"<span style='font-size: 17px; font-weight: 800; color: #4da6ff;'>"
         f"Poz. {int(golden_row_2['pos_nr']):02d} <span style='color:#00e676;'>(🟦 M.{int(golden_row_2['blue_m']):02d})</span></span>"
-        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— trafia {golden_pct_2:.1f}%</span>"
+        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— w Tabeli 🟦: {int(golden_row_2['b_hits_cnt'])}/15 ({golden_row_2['b_hit_pct']:.1f}%)</span>"
         f"</div>"
         f"</div>"
         f"</div>"
         f"<div style='margin-bottom: 10px;'>"
-        f"<div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 6px;'>🔥 Pełne TOP 5 Liczb (#1 – #5):</div>"
+        f"<div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 6px;'>🔥 Pełne TOP 5 Liczb wg łącznej siły Score (#1 – #5):</div>"
         f"<div>{top5_badges_html}</div>"
         f"</div>"
         f"<div style='display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; color: #e6e6e6; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);'>"
@@ -1047,16 +1087,18 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
     col_pred_table, col_hot_all = st.columns([1.45, 0.95], gap="large")
 
     with col_pred_table:
-        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (🟦 Niebieska 40 pkt + ⬜/🔴 35 pkt + ⭐ 25 pkt)")
-        df_display_pred = df_predictions.drop(columns=["pos_nr", "blue_m", "blue_raw", "freq_raw"]).copy()
+        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (🟦 Niebieska 45 pkt + ⬜/🔴 30 pkt + ⭐ 25 pkt)")
+        df_display_pred = df_predictions.drop(
+            columns=["pos_nr", "blue_m", "b_hits_cnt", "b_hit_pct", "orig_15_cnt", "support_score", "blue_raw", "freq_raw"]
+        ).copy()
         st.dataframe(
             df_display_pred,
             column_config={
                 "Pozycja": st.column_config.TextColumn("Poz. (🟦 Miejsce)", width="medium"),
                 "Liczba": st.column_config.NumberColumn("Kula", width="small"),
                 "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-                "🟦 Pkt Niebieska": st.column_config.TextColumn("🟦 Tabela Niebieska (40)", width="medium"),
-                "⬜/🔴 Pkt Tabela 1": st.column_config.TextColumn("⬜/🔴 Tabela 1 (35)", width="medium"),
+                "🟦 Pkt Niebieska": st.column_config.TextColumn("🟦 Tabela Niebieska (45)", width="medium"),
+                "⬜/🔴 Pkt Tabela 1": st.column_config.TextColumn("⬜/🔴 Tabela 1 (30)", width="medium"),
                 "⭐ Pula 'Najczęstsza'": st.column_config.TextColumn("⭐ Kol. 'Najczęstsza'", width="medium"),
                 "Częstość w oknie": st.column_config.TextColumn(f"Losowana ({window_size})", width="medium"),
                 "Najczęstsza na Poz.": st.column_config.TextColumn("Lider Poz.", width="small"),
@@ -1100,18 +1142,25 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         )
 
     # =====================================================================
-    # SEKCJA 3: PODSUMOWANIE I WERYFIKACJA WSTECZNA NA 100 LOSOWAŃ (BEZ PAR)
+    # SEKCJA 3: PODSUMOWANIE I WERYFIKACJA WSTECZNA NA 100 LOSOWAŃ
     # =====================================================================
     st.divider()
     st.subheader(f"🧪 3. Weryfikacja wsteczna algorytmu (ostatnie {actual_bt_steps} losowań przy oknie {window_size})")
 
     avg_top5 = (total_top5_hits / (actual_bt_steps * 5)) * 100
     avg_top8 = (total_top8_hits / (actual_bt_steps * 8)) * 100
+    g1_bt_pct = (golden_1_bt_hits / actual_bt_steps) * 100
+    g2_bt_pct = (golden_2_bt_hits / actual_bt_steps) * 100
+    g_any_pct = (golden_at_least_one_bt / actual_bt_steps) * 100
+    best_s1_pct = (top5_slot_hits[best_slot_1] / actual_bt_steps) * 100
+    best_s2_pct = (top5_slot_hits[best_slot_2] / actual_bt_steps) * 100
 
     st.info(
         f"📈 **Podsumowanie ze {actual_bt_steps} losowań wstecz (dla okna {window_size}):**\n"
-        f"- **Najlepsze lokaty w TOP 5:** **Typ #{best_slot_1}** trafia **{top5_slot_hits[best_slot_1]}/{actual_bt_steps} ({golden_pct_1:.1f}%)**, "
-        f"a **Typ #{best_slot_2}** trafia **{top5_slot_hits[best_slot_2]}/{actual_bt_steps} ({golden_pct_2:.1f}%)**\n"
+        f"- **Złote Lokaty (2 Liderzy Tabeli 🟦):** Lider #1 trafił **{golden_1_bt_hits}/{actual_bt_steps} ({g1_bt_pct:.1f}%)**, "
+        f"Lider #2 trafił **{golden_2_bt_hits}/{actual_bt_steps} ({g2_bt_pct:.1f}%)** — w **{golden_at_least_one_bt}/{actual_bt_steps} ({g_any_pct:.1f}%)** gier wchodzi min. 1 Złota Lokata!\n"
+        f"- **Najlepsze sloty w TOP 5:** **Typ #{best_slot_1}** trafia **{top5_slot_hits[best_slot_1]}/{actual_bt_steps} ({best_s1_pct:.1f}%)**, "
+        f"a **Typ #{best_slot_2}** trafia **{top5_slot_hits[best_slot_2]}/{actual_bt_steps} ({best_s2_pct:.1f}%)**\n"
         f"- **Całe TOP 5 liczb:** łącznie **{total_top5_hits} trafień** na {actual_bt_steps*5} typów (**{avg_top5:.1f}%** skuteczności)\n"
         f"- **Całe TOP 8 liczb:** łącznie **{total_top8_hits} trafień** na {actual_bt_steps*8} typów (**{avg_top8:.1f}%** skuteczności)"
     )
@@ -1129,7 +1178,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
             "Trafienia": f"{s_hits} / {actual_bt_steps}",
             "Skuteczność %": round(s_pct, 1),
             "Aktualna Kula (Teraz w grze)": int(curr_row_s["Liczba"]),
-            "Pozycja i Niebieska": f"Poz. {int(curr_row_s['pos_nr']):02d} (🟦 M.{int(curr_row_s['blue_m']):02d})",
+            "Pozycja i Niebieska": f"Poz. {int(curr_row_s['pos_nr']):02d} (🟦 M.{int(curr_row_s['blue_m']):02d} — {int(curr_row_s['b_hits_cnt'])}/15)",
             "Status 'Najczęstsza'": curr_row_s["⭐ Pula 'Najczęstsza'"]
         })
 
@@ -1192,7 +1241,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
         key="top5_kenopos_summary_tbl"
     )
 
-    st.markdown(f"#### 📋 C. Szczegółowa historia {actual_bt_steps} losowań (5 osobnych kolumn dla TOP 5 — 🟩 = Trafienie w T+1)")
+    st.markdown(f"#### 📋 C. Szczegółowa historia {actual_bt_steps} losowań (Złote Lokaty 🟦 + 5 osobnych kolumn dla TOP 5 — 🟩 = Trafienie w T+1)")
     bt_matrix_html = f"""
     <!DOCTYPE html>
     <html>
@@ -1213,6 +1262,7 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
                     <tr>
                         <th style="text-align:left;">Z losowania</th>
                         <th style="text-align:left; border-right:2px solid #333945;">Do (T+1)</th>
+                        <th style="border-right:2px solid #333945; color:#00aaff;">🏆 2 Złote Lokaty 🟦<br><span style="font-size:9px; color:#8a94a6;">(Lider #1 i #2 z Tab. 🟦)</span></th>
                         <th style="color:#ffd166;">Typ #1<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[1]}/{actual_bt_steps})</span></th>
                         <th style="color:#ffd166;">Typ #2<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[2]}/{actual_bt_steps})</span></th>
                         <th style="color:#ffd166;">Typ #3<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[3]}/{actual_bt_steps})</span></th>
@@ -1232,5 +1282,5 @@ def render_prediction_algorithm(df_full, default_window=15, default_backtest=100
     """
     components.html(bt_matrix_html, height=640, scrolling=False)
 
-# Wywołanie modułu predykcyjnego V4 (domyślnie okno 15 losowań oraz weryfikacja wsteczna na 100 losowań):
+# Wywołanie modułu predykcyjnego V5 (domyślnie okno 15 losowań oraz weryfikacja wsteczna na 100 losowań):
 render_prediction_algorithm(df, default_window=15, default_backtest=100)
