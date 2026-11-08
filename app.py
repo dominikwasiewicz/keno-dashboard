@@ -959,9 +959,9 @@ def render_prediction_algorithm(df_full, default_window=15, default_blue_win=15,
         return score_at_t
 
     # =====================================================================
-    # SKANER OPTYMALNEGO OKNA (OD 5 DO 20 LOSOWAŃ)
+    # SKANER OPTYMALNEGO OKNA V9 (Z PRZYWRÓCONYM WERDYKTEM I CZYTELNĄ KOLUMNĄ OKNA)
     # =====================================================================
-    with st.expander("🔍 SKANER NAJSKUTECZNIEJSZEGO OKNA V9 (Porównaj okna: 5, 6, 7, 8, 9, 10, 12, 15, 20)", expanded=False):
+    with st.expander("🔍 SKANER NAJSKUTECZNIEJSZEGO OKNA V9 (Porównaj okna: 5, 6, 7, 8, 9, 10, 12, 15, 20)", expanded=True):
         if st.button(f"🚀 Uruchom test porównawczy wszystkich okien (5 – 20) na ostatnich {actual_bt_steps} losowaniach", type="primary"):
             scan_windows = [5, 6, 7, 8, 9, 10, 12, 15, 20]
             scan_results = []
@@ -1000,21 +1000,46 @@ def render_prediction_algorithm(df_full, default_window=15, default_blue_win=15,
                 df_live_p, df_live_bg, _, _, _, _ = scorer_fn(latest_idx_scan)
                 live_g1 = int(df_live_bg.iloc[0]["Liczba"])
                 live_g2 = int(df_live_bg.iloc[1]["Liczba"])
+                live_slot_ball = int(df_live_p.iloc[best_slot_nr - 1]["Liczba"])
 
+                # Dopisujemy numer okna bezpośrednio do kolumn, żeby nawet po przewinięciu w prawo było widać, które to okno!
                 scan_results.append({
-                    "Okno (Losowań)": f"Okno {w_test} losowań",
+                    "Okno": f"👉 Okno {w_test}",
+                    "w_num": w_test,
+                    "g_any_raw": g_any_pct,
+                    "slot_raw": best_slot_pct,
                     "best_metric": max(g1_pct, best_slot_pct),
-                    "Złota Lokata #1 (%)": round(g1_pct, 1),
-                    "Min. 1 z 2 Złotych Lokat": f"{g_any_hits}/{actual_bt_steps} ({g_any_pct:.1f}%)",
-                    "Najlepszy Slot w TOP 5": f"Typ #{best_slot_nr}: {best_slot_cnt}/{actual_bt_steps} ({best_slot_pct:.1f}%)",
-                    "Średnia całego TOP 5": f"{t5_avg_pct:.1f}% ({t5_hits_total}/{actual_bt_steps*5})",
-                    "Teraz wskazuje (Złote Lokaty 🟦)": f"Kule: {live_g1:02d} oraz {live_g2:02d}"
+                    "Złota #1 (%)": f"[Okno {w_test}] {g1_pct:.0f}% ({g1_hits}/{actual_bt_steps})",
+                    "Min. 1 z 2 Złotych": f"{g_any_hits}/{actual_bt_steps} ({g_any_pct:.1f}%)",
+                    "Najlepszy Slot TOP 5": f"Typ #{best_slot_nr}: {best_slot_cnt}/{actual_bt_steps} ({best_slot_pct:.1f}%) ➔ Kula {live_slot_ball:02d}",
+                    "Teraz wskazuje (Złote 🟦)": f"[Okno {w_test}] Kule: {live_g1:02d} oraz {live_g2:02d}",
+                    "Średnia TOP 5": f"{t5_avg_pct:.1f}% ({t5_hits_total}/{actual_bt_steps*5})"
                 })
                 progress_bar.progress((idx_w + 1) / len(scan_windows))
 
             progress_bar.empty()
-            df_scan = pd.DataFrame(scan_results).sort_values(by="best_metric", ascending=False, kind="mergesort")
-            st.dataframe(df_scan.drop(columns=["best_metric"]), hide_index=True, use_container_width=True)
+            df_scan = pd.DataFrame(scan_results).sort_values(
+                by=["best_metric", "g_any_raw"], ascending=[False, False], kind="mergesort"
+            ).reset_index(drop=True)
+
+            # Wyłonienie najlepszego okna dla Złotych Lokat 🟦 oraz najlepszego okna dla Slotu TOP 5
+            best_overall = df_scan.iloc[0]
+            best_golden_win = df_scan.sort_values(by="g_any_raw", ascending=False, kind="mergesort").iloc[0]
+
+            st.success(
+                f"🏆 **NAJLEPSZA WARTOŚĆ WYBORU (na bazie ostatnich {actual_bt_steps} losowań):**\n\n"
+                f"1️⃣ **Najlepsze okno dla Pojedynczego Typu:** **{best_overall['Okno']} losowań** "
+                f"— {best_overall['Najlepszy Slot TOP 5']} | {best_overall['Teraz wskazuje (Złote 🟦)']}\n\n"
+                f"2️⃣ **Najlepsze okno dla 2 Złotych Lokat 🟦:** **{best_golden_win['Okno']} losowań** "
+                f"— trafia min. 1 z 2 w **{best_golden_win['Min. 1 z 2 Złotych']}** gier! "
+                f"({best_golden_win['Teraz wskazuje (Złote 🟦)']})"
+            )
+
+            st.dataframe(
+                df_scan.drop(columns=["w_num", "g_any_raw", "slot_raw", "best_metric"]),
+                hide_index=True,
+                use_container_width=True
+            )
 
     # =====================================================================
     # GŁÓWNE OBLICZENIE DLA WYBRANEGO OKNA
