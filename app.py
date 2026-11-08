@@ -574,16 +574,13 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V11:
-# 1) PRZYWRÓCONY WYBÓR OKNA TABELI NIEBIESKIEJ 🟦 OD 5 DO 20 + SKANER NAJLEPSZEGO OKNA 🟦 (5-20)
-# 2) KOREKTA TYPU #2 (BLOKADA SŁABYCH POZYCJI 25% PRZED WEJŚCIEM NAD LIDERÓW 50%)
-# 3) PREMIA DLA NAJSKUTECZNIEJSZYCH KOLUMN Z TABELI B (JAK POZ. 08 I POZ. 01)
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V11 (Z AUTOMATYCZNYM ZAZNACZANIEM NAJLEPSZEGO OKNA PRZEZ SKANER)
 # =====================================================================
 from collections import defaultdict
 
-def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, default_backtest=30):
+def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, default_backtest=30):
     st.divider()
-    st.header("🧠 Algorytm V11: Osobny Wybór Tabeli Niebieskiej 🟦 (5–20) + Skaner Najlepszej Wartości")
+    st.header("🧠 Algorytm V11: Auto-Skaner Najlepszego Okna (5–20) + Detektor Serii 👑")
 
     pred_options = [5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30]
     blue_options = [5, 6, 7, 8, 9, 10, 12, 15, 20]
@@ -603,6 +600,17 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
         url_bt = st.query_params.get("bt_steps_v11", str(default_backtest))
         saved_bt = int(url_bt) if str(url_bt).isdigit() else default_backtest
         st.session_state.bt_steps_v11 = saved_bt if saved_bt in bt_options else default_backtest
+
+    # Jeśli skaner w poprzednim kliknięciu wytypował najlepsze okna, ustawiamy je PRZED narysowaniem kropek radio!
+    if "auto_set_w1" in st.session_state and "auto_set_b2" in st.session_state:
+        new_w1 = st.session_state.pop("auto_set_w1")
+        new_b2 = st.session_state.pop("auto_set_b2")
+        st.session_state.pred_win_v11 = new_w1
+        st.session_state.blue_win_v11 = new_b2
+        st.session_state.pred_win_radio_v11 = new_w1
+        st.session_state.blue_win_radio_v11 = new_b2
+        st.query_params["pred_win_v11"] = str(new_w1)
+        st.query_params["blue_win_v11"] = str(new_b2)
 
     def update_pred_params():
         st.session_state.pred_win_v11 = st.session_state.pred_win_radio_v11
@@ -655,7 +663,7 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
     total_draws = len(df_full)
 
     # =================================================================
-    # SILNIK V11: OBSŁUGA OSOBNEGO OKNA TABELI 1 (w_size) ORAZ TABELI NIEBIESKIEJ (b_lookback)
+    # SILNIK V11
     # =================================================================
     def run_engine_v11(w_size, b_lookback, steps_to_test):
         earliest_needed = max(max(w_size, b_lookback) - 1, total_draws - 1 - steps_to_test - b_lookback - 4)
@@ -663,7 +671,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
         min_mode_thr = 3 if w_size >= 12 else 2
 
         for t_i in range(earliest_needed, total_draws):
-            # 1. Okno dla Pierwszej Tabeli (w_size)
             w_start = t_i - w_size + 1
             w_lists = all_lists[w_start : t_i + 1]
             w_sets = all_sets[w_start : t_i + 1]
@@ -688,7 +695,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                 if m_cnt >= min_mode_thr:
                     all_modes_set.add(m_val)
 
-            # 2. Okno dla Tabeli Niebieskiej 🟦 (b_lookback) — aby kolumny M.1..M.20 zgadzały się z wybranym oknem 🟦!
             b_start = t_i - b_lookback + 1
             b_lists = all_lists[b_start : t_i + 1]
             b_sets = all_sets[b_start : t_i + 1]
@@ -792,8 +798,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                     if all_lists[t_idx - 2][p_i] in all_sets[t_idx - 1]:
                         sq_2_ago[p_i + 1] = True
 
-            # Aby słabe kolumny (jak 2/8 na Poz.19 i Poz.13 ze zrzutu) nie wchodziły na Typ #2:
-            # Wymagamy minimum ~34% własnych białych kwadratów LUB minimum 40% trafień w Tabeli Niebieskiej!
             min_strong_white_hits = max(2, int(round(trans_count * 0.34)))
 
             candidates = []
@@ -833,12 +837,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                 ball_freq_in_win = win_ball_freq[ball]
                 ball_t1_in_win = win_ball_t1_repeats[ball]
 
-                # =========================================================================
-                # NAPRAWA TYPU #2 W V11:
-                # Status "👑 Król Serii" dostaje pełną moc TYLKO wtedy, gdy sama pozycja
-                # ma silną podstawę (pos_white_hits >= min_strong_white_hits LUB b_hit_rate >= 0.38).
-                # Dzięki temu kula 61 (mająca tylko 2/8 = 25% na Poz.19 i 2/9 na M.14) nie wskoczy na Typ #2!
-                # =========================================================================
                 has_strong_base = (pos_white_hits >= min_strong_white_hits) or (b_hit_rate >= 0.38) or (orig_bwin_rate >= 0.38)
                 is_active_series_king = (in_prev1 and (sq_d1 or same_pos_anchor) and has_strong_base)
 
@@ -862,19 +860,14 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                         is_disqualified = True
                         verdict_str = f"❄️ Martwa Poz.{pos_nr:02d} (0 ⬜ w 3 ost.)"
 
-                # =========================================================================
-                # PUNKTACJA V11 (0 - 100 PKT):
-                # =========================================================================
                 effective_blue_hits = max(b_hits_cnt, orig_bwin_cnt)
                 effective_blue_rate = effective_blue_hits / max(1, blue_steps_avail)
 
-                # 1. Baza Pozycji ⬜ + Tabela Niebieska 🟦 (do 50 pkt — zwiększona waga twardych trafień!)
                 pts_white_rate = min(22.0, (pos_white_rate / 0.48) * 22.0)
                 pts_blue_rate = min(18.0, (effective_blue_rate / 0.46) * 18.0)
                 pts_now_square = 10.0 if (sq_d1 and b_u1) else (7.0 if (sq_d1 or b_u1) else (3.5 if (sq_n1 or b_adj1) else 0.0))
                 score_pos_and_blue = round(min(50.0, pts_white_rate + pts_blue_rate + pts_now_square), 1)
 
-                # 2. Impuls Serii / Podwójnego Węzła 🔴+⬜ (do 30 pkt)
                 pts_series = 0.0
                 path_str = ""
                 if is_active_series_king:
@@ -903,7 +896,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
 
                 score_series_total = round(min(30.0, pts_series), 1)
 
-                # 3. Kolumna "Najczęstsza" + Powtórki Kuli T+1 (do 20 pkt)
                 mode_on_pos, mode_cnt_on_pos = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_on_pos and mode_cnt_on_pos >= min_thr)
                 pts_mode = 10.0 if (is_exact_mode and has_strong_base) else (5.0 if (ball in all_modes_set_now and has_strong_base) else 0.0)
@@ -915,7 +907,6 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                 raw_score = score_pos_and_blue + score_series_total + score_freq_total
                 final_score = round(max(5.0, raw_score - 45.0 if is_disqualified else raw_score), 1)
 
-                # Ranking Złotych Lokat 🟦 (mocny nacisk na liderów Tabeli Niebieskiej b_hits_cnt takich jak M.11 i M.16 ze Zrzutu 2!)
                 gold_rank_score = (
                     (b_hits_cnt * 12.0)
                     + (pos_white_hits * 9.0)
@@ -966,36 +957,32 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
         return score_at_t
 
     # =====================================================================
-    # PRZYWRÓCONY SKANER V11: SPRAWDZA ZARÓWNO OKNA TABELI NIEBIESKIEJ 🟦 (5-20), JAK I TABELI 1!
+    # AUTO-SKANER V11: WYBIERA NAJLEPSZĄ WARTOŚĆ (5-20) I OD RAZU JĄ ZAZNACZA!
     # =====================================================================
-    with st.expander("🔍 SKANER NAJLEPSZEGO OKNA NIEBIESKICH 🟦 (5–20) ORAZ TABELI 1 ⬜ (Kliknij, aby rozwinąć)", expanded=True):
-        st.caption(
-            f"Skaner bada dla Ciebie wszystkie wartości **Tabeli Niebieskiej 🟦 od 5 do 20** (przy Twoim obecnym oknie Tabeli 1 = {window_size}) "
-            f"oraz warianty wspólne, aby wskazać, który zakres 🟦 daje najwyższą trafność."
-        )
-        col_btn_b, col_btn_all = st.columns(2)
-        with col_btn_b:
-            run_blue_scan = st.button(
-                f"🟦 1. Sprawdź, które okno NIEBIESKICH (5 – 20) jest najlepsze (na {actual_bt_steps} los.)",
+    with st.expander("🔍 AUTO-SKANER NAJLEPSZEGO OKNA (5–20) — Kliknij przycisk, aby znaleźć i AUTOMATYCZNIE zaznaczyć najlepszą wartość", expanded=True):
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            auto_joint_btn = st.button(
+                f"🚀 1. Znajdź najlepsze wspólne okno (5–20) i AUTOMATYCZNIE je zaznacz ({actual_bt_steps} gier)",
                 type="primary",
                 use_container_width=True
             )
-        with col_btn_all:
-            run_joint_scan = st.button(
-                f"⚙️ 2. Sprawdź wspólne okna (5 – 20) dla obu tabel naraz (na {actual_bt_steps} los.)",
+        with col_btn2:
+            auto_blue_btn = st.button(
+                f"🟦 2. Znajdź najlepsze okno samej Tabeli Niebieskiej (5–20) i je zaznacz ({actual_bt_steps} gier)",
                 use_container_width=True
             )
 
-        if run_blue_scan or run_joint_scan:
+        if auto_joint_btn or auto_blue_btn:
             scan_windows = [5, 6, 7, 8, 9, 10, 12, 15, 20]
             scan_results = []
             latest_idx_scan = total_draws - 1
 
-            progress_bar = st.progress(0, text="Trwa testowanie wartości od 5 do 20...")
+            progress_bar = st.progress(0, text="Skanuję okna od 5 do 20 i szukam najwyższej skuteczności...")
             for idx_w, w_test in enumerate(scan_windows):
-                w1_val = window_size if run_blue_scan else w_test
+                w1_val = window_size if auto_blue_btn else w_test
                 b2_val = w_test
-                label_mode = f"🟦 Niebieskie = {b2_val} (Tab.1={w1_val})" if run_blue_scan else f"Wspólne Okno = {w_test}"
+                label_mode = f"Tab.1={w1_val} | 🟦={b2_val}" if auto_blue_btn else f"Okno = {w_test}"
 
                 scorer_fn = run_engine_v11(w1_val, b2_val, actual_bt_steps)
                 g1_hits, g2_hits, g_any_hits = 0, 0, 0
@@ -1031,45 +1018,56 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
                 live_g2 = int(df_live_bg.iloc[1]["Liczba"])
                 live_slot_ball = int(df_live_p.iloc[best_slot_nr - 1]["Liczba"])
 
+                # Łączona ocena okna: priorytet ma skuteczność Złotych Lokat (g_any_pct) oraz najlepszego Slotu (best_slot_pct)
+                combined_power = (g_any_pct * 0.55) + (best_slot_pct * 0.45)
+
                 scan_results.append({
-                    "Badane Ustawienie": f"👉 {label_mode}",
-                    "w_num": w_test,
+                    "Ustawienie": f"👉 {label_mode}",
+                    "w1_val": w1_val,
+                    "b2_val": b2_val,
+                    "combined_power": combined_power,
                     "g_any_raw": g_any_pct,
                     "slot_raw": best_slot_pct,
-                    "best_metric": max(g1_pct, g2_pct, best_slot_pct),
-                    "Złote Lokaty 🟦 (Min. 1 z 2)": f"[🟦={b2_val}] {g_any_hits}/{actual_bt_steps} ({g_any_pct:.1f}%)",
+                    "Złote Lokaty 🟦 (Min. 1 z 2)": f"{g_any_hits}/{actual_bt_steps} ({g_any_pct:.1f}%)",
                     "Lider #1 / #2 🟦": f"#1: {g1_pct:.0f}% | #2: {g2_pct:.0f}%",
                     "Najlepszy Slot TOP 5": f"Typ #{best_slot_nr}: {best_slot_cnt}/{actual_bt_steps} ({best_slot_pct:.1f}%) ➔ Kula {live_slot_ball:02d}",
-                    "Co typuje TERAZ (Złote 🟦)": f"[🟦={b2_val}] Kule: {live_g1:02d} oraz {live_g2:02d}",
+                    "Co typuje TERAZ (Złote 🟦)": f"Kule: {live_g1:02d} oraz {live_g2:02d}",
                     "Średnia TOP 5": f"{t5_avg_pct:.1f}% ({t5_hits_total}/{actual_bt_steps*5})"
                 })
                 progress_bar.progress((idx_w + 1) / len(scan_windows))
 
             progress_bar.empty()
             df_scan = pd.DataFrame(scan_results).sort_values(
-                by=["g_any_raw", "best_metric"], ascending=[False, False], kind="mergesort"
+                by=["combined_power", "g_any_raw", "slot_raw"], ascending=[False, False, False], kind="mergesort"
             ).reset_index(drop=True)
 
-            best_golden_win = df_scan.iloc[0]
-            best_slot_win = df_scan.sort_values(by="slot_raw", ascending=False, kind="mergesort").iloc[0]
+            winner_row = df_scan.iloc[0]
+            win_w1 = int(winner_row["w1_val"])
+            win_b2 = int(winner_row["b2_val"])
 
-            st.success(
-                f"🏆 **WERDYKT SKANERA (na bazie ostatnich {actual_bt_steps} losowań):**\n\n"
-                f"🟦 **NAJLEPSZA WARTOŚĆ DLA TABELI NIEBIESKIEJ (Złote Lokaty 🟦):** **{best_golden_win['Badane Ustawienie']}** "
-                f"— trafia min. 1 z 2 w **{best_golden_win['Złote Lokaty 🟦 (Min. 1 z 2)']}** gier! "
-                f"Teraz wskazuje: **{best_golden_win['Co typuje TERAZ (Złote 🟦)']}**\n\n"
-                f"🎯 **NAJLEPSZA WARTOŚĆ DLA POJEDYNCZEGO SLOTU TOP 5:** **{best_slot_win['Badane Ustawienie']}** "
-                f"— **{best_slot_win['Najlepszy Slot TOP 5']}**"
+            # Zapisujemy wynik skanera w session_state, aby wyświetlił się po automatycznym przełączeniu kropek!
+            st.session_state["last_scan_df"] = df_scan.drop(columns=["w1_val", "b2_val", "combined_power", "g_any_raw", "slot_raw"])
+            st.session_state["last_scan_msg"] = (
+                f"✅ **SKANER ZAKOŃCZYŁ PRACĘ I AUTOMATYCZNIE ZAZNACZYŁ NAJLEPSZĄ WARTOŚĆ:** "
+                f"**Okno Tabeli 1 = `{win_w1}` | Okno Tabeli Niebieskiej 🟦 = `{win_b2}`**\n\n"
+                f"- **Skuteczność Złotych Lokat 🟦 dla tego ustawienia:** **{winner_row['Złote Lokaty 🟦 (Min. 1 z 2)']}** ({winner_row['Co typuje TERAZ (Złote 🟦)']})\n"
+                f"- **Najlepszy Pojedynczy Slot:** **{winner_row['Najlepszy Slot TOP 5']}**\n"
+                f"*(Wszystkie kropki na górze oraz główny zielony blok poniżej zostały już automatycznie przestawione na tę wartość!)*"
             )
 
-            st.dataframe(
-                df_scan.drop(columns=["w_num", "g_any_raw", "slot_raw", "best_metric"]),
-                hide_index=True,
-                use_container_width=True
-            )
+            # Zlecamy automatyczne przestawienie kropek radio na wygraną wartość i natychmiast odświeżamy widok!
+            st.session_state["auto_set_w1"] = win_w1
+            st.session_state["auto_set_b2"] = win_b2
+            st.rerun()
+
+        # Wyświetlamy zapamiętany wynik ostatniego skanowania
+        if "last_scan_msg" in st.session_state:
+            st.success(st.session_state["last_scan_msg"])
+        if "last_scan_df" in st.session_state:
+            st.dataframe(st.session_state["last_scan_df"], hide_index=True, use_container_width=True)
 
     # =====================================================================
-    # GŁÓWNE OBLICZENIE DLA WYBRANYCH PRZEZ CIEBIE SUWAKÓW (window_size, blue_lookback)
+    # GŁÓWNE OBLICZENIE DLA AKTUALNIE ZAZNACZONYCH WARTOŚCI (window_size, blue_lookback)
     # =====================================================================
     latest_idx = total_draws - 1
     active_scorer = run_engine_v11(window_size, blue_lookback, actual_bt_steps)
@@ -1433,5 +1431,5 @@ def render_prediction_algorithm(df_full, default_window=9, default_blue_win=15, 
     """
     components.html(bt_matrix_html, height=640, scrolling=False)
 
-# Wywołanie modułu V11 (z osobnym wyborem okna Tabeli Niebieskiej od 5 do 20):
-render_prediction_algorithm(df, default_window=9, default_blue_win=15, default_backtest=30)
+# Wywołanie modułu V11 (z auto-zaznaczaniem najlepszej wartości):
+render_prediction_algorithm(df, default_window=8, default_blue_win=8, default_backtest=30)
