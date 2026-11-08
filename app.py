@@ -574,69 +574,71 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V8:
-# CAŁKOWITY ZAKAZ "KRADZIEŻY PROCENTÓW" Z KOLUMN M.XX (PRZYKŁAD KULI 13 NA POZ. 05)
-# + WERYFIKACJA PODWÓJNEGO WĘZŁA (CZY KULA Z 🔴 POTRAFI PODAĆ DALEJ DO ⬜)
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V9:
+# 1) BLOKADA WYGASŁYCH KOLUMN (JAK 30 NA M.1 I 38 NA POZ.11 BEZ TRAFIEŃ OD 5 LOSOWAŃ)
+# 2) ODBLOKOWANIE LIDERÓW TABELI NIEBIESKIEJ (NP. MIEJSCE 09 I 10 MAJĄCE 46.7%)
+# 3) PRZYWRÓCENIE BRAKUJĄCEJ KOLUMNY W TABELI C ORAZ TABELI B POZYCJI KENO
 # =====================================================================
 from collections import defaultdict
 
-def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, default_backtest=50):
+def render_prediction_algorithm(df_full, default_window=15, default_blue_win=15, default_backtest=50):
     st.divider()
-    st.header("🧠 Algorytm V8: Prawdziwa Skuteczność Pozycji (Blokada Kuli 13 / Słabych Kolumn)")
+    st.header("🧠 Algorytm V9: Aktywne Ścieżki ⬜/🟦 (Blokada Wygasłych Kolumn jak 30 i 38)")
 
     pred_options = [5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30]
     blue_options = [5, 6, 7, 8, 9, 10, 12, 15, 20]
     bt_options = [30, 50, 100, 150]
 
-    if "pred_win_saved" not in st.session_state:
-        url_val = st.query_params.get("pred_win", str(default_window))
+    # Nowe klucze sesji v9, aby automatycznie zsynchronizować okno na 15 (zgodnie z Tabelą 1 i 2)
+    if "pred_win_v9" not in st.session_state:
+        url_val = st.query_params.get("pred_win_v9", str(default_window))
         saved_int = int(url_val) if str(url_val).isdigit() else default_window
-        st.session_state.pred_win_saved = saved_int if saved_int in pred_options else default_window
+        st.session_state.pred_win_v9 = saved_int if saved_int in pred_options else default_window
 
-    if "blue_win_saved" not in st.session_state:
-        url_bval = st.query_params.get("blue_win", str(default_blue_win))
+    if "blue_win_v9" not in st.session_state:
+        url_bval = st.query_params.get("blue_win_v9", str(default_blue_win))
         saved_bint = int(url_bval) if str(url_bval).isdigit() else default_blue_win
-        st.session_state.blue_win_saved = saved_bint if saved_bint in blue_options else default_blue_win
+        st.session_state.blue_win_v9 = saved_bint if saved_bint in blue_options else default_blue_win
 
-    if "bt_steps_saved" not in st.session_state:
-        url_bt = st.query_params.get("bt_steps", str(default_backtest))
+    if "bt_steps_v9" not in st.session_state:
+        url_bt = st.query_params.get("bt_steps_v9", str(default_backtest))
         saved_bt = int(url_bt) if str(url_bt).isdigit() else default_backtest
-        st.session_state.bt_steps_saved = saved_bt if saved_bt in bt_options else default_backtest
+        st.session_state.bt_steps_v9 = saved_bt if saved_bt in bt_options else default_backtest
 
     def update_pred_params():
-        st.session_state.pred_win_saved = st.session_state.pred_win_radio_key
-        st.session_state.blue_win_saved = st.session_state.blue_win_radio_key
-        st.session_state.bt_steps_saved = st.session_state.bt_steps_radio_key
-        st.query_params["pred_win"] = str(st.session_state.pred_win_radio_key)
-        st.query_params["blue_win"] = str(st.session_state.blue_win_radio_key)
-        st.query_params["bt_steps"] = str(st.session_state.bt_steps_radio_key)
+        st.session_state.pred_win_v9 = st.session_state.pred_win_radio_v9
+        st.session_state.blue_win_v9 = st.session_state.blue_win_radio_v9
+        st.session_state.bt_steps_v9 = st.session_state.bt_steps_radio_v9
+        st.query_params["pred_win_v9"] = str(st.session_state.pred_win_radio_v9)
+        st.query_params["blue_win_v9"] = str(st.session_state.blue_win_radio_v9)
+        st.query_params["bt_steps_v9"] = str(st.session_state.bt_steps_radio_v9)
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1.15, 1.05, 0.8])
     with col_cfg1:
         window_size = st.radio(
-            "⚙️ 1. Okno analizy Pierwszej Tabeli ⬜/🔴 (od 5 losowań):",
+            "⚙️ 1. Okno analizy Pierwszej Tabeli ⬜/🔴 (domyślnie 15 — jak na górze):",
             options=pred_options,
-            index=pred_options.index(st.session_state.pred_win_saved),
+            index=pred_options.index(st.session_state.pred_win_v9),
             horizontal=True,
-            key="pred_win_radio_key",
+            key="pred_win_radio_v9",
             on_change=update_pred_params
         )
     with col_cfg2:
         blue_lookback = st.radio(
-            "🟦 2. Okno sprawdzania Tabeli Niebieskiej (od 5 losowań):",
+            "🟦 2. Okno sprawdzania Tabeli Niebieskiej (domyślnie 15 — jak na górze):",
             options=blue_options,
-            index=blue_options.index(st.session_state.blue_win_saved),
+            index=blue_options.index(st.session_state.blue_win_v9),
             horizontal=True,
-            key="blue_win_radio_key",
+            key="blue_win_radio_v9",
             on_change=update_pred_params
         )
     with col_cfg3:
         backtest_steps = st.radio(
             "🧪 3. Weryfikacja wsteczna (losowań):",
             options=bt_options,
-            index=bt_options.index(st.session_state.bt_steps_saved),
+            index=bt_options.index(st.session_state.bt_steps_v9),
             horizontal=True,
-            key="bt_steps_radio_key",
+            key="bt_steps_radio_v9",
             on_change=update_pred_params
         )
 
@@ -654,9 +656,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     total_draws = len(df_full)
 
     # =================================================================
-    # SILNIK V8: ZERO TOLERANCJI DLA SŁABYCH POZYCJI (NP. POZ. 05 Z KULĄ 13)
+    # SILNIK V9: SYNCHRONIZACJA 1:1 + BLOKADA WYGASŁYCH KOLUMN (JAK 30 I 38)
     # =================================================================
-    def run_engine_v8(w_size, b_lookback, steps_to_test):
+    def run_engine_v9(w_size, b_lookback, steps_to_test):
         earliest_needed = max(w_size - 1, total_draws - 1 - steps_to_test - b_lookback - 3)
         local_meta = {}
         min_mode_thr = 3 if w_size >= 12 else 2
@@ -691,6 +693,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "ball": curr_l[p_idx]
                 })
 
+            # Dokładnie to samo sortowanie co w górnej Tabeli Niebieskiej
             df_rank_step = pd.DataFrame(pos_temp).sort_values(
                 by="raw_hits", ascending=False, kind="mergesort"
             ).reset_index(drop=True)
@@ -730,35 +733,41 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             min_thr = meta_now["min_mode_thr"]
 
             blue_col_hits = {m: 0 for m in range(1, 21)}
+            blue_col_rec2 = {m: 0 for m in range(1, 21)}  # Niebieskie trafienia w ostatnich 2 grach (t-1, t-2)
+            blue_col_rec3 = {m: 0 for m in range(1, 21)}  # Niebieskie trafienia w ostatnich 3 grach
             orig_pos_hits_bwin = {p: 0 for p in range(1, 21)}
-            orig_pos_recent3 = {p: 0 for p in range(1, 21)}
+            orig_pos_rec2 = {p: 0 for p in range(1, 21)}  # Własne białe kwadraty pozycji w ostatnich 2 grach
+            orig_pos_rec3 = {p: 0 for p in range(1, 21)}  # Własne białe kwadraty pozycji w ostatnich 3 grach
             blue_steps_avail = 0
 
             start_b = max(earliest_needed, t_idx - b_lookback)
             for b_t in range(start_b, t_idx):
                 blue_steps_avail += 1
                 b_hits_map = local_meta[b_t]["blue_hit_by_col"]
-                is_rec3 = (b_t >= t_idx - 3)
+                is_r2 = (b_t >= t_idx - 2)
+                is_r3 = (b_t >= t_idx - 3)
                 for m_c in range(1, 21):
                     if b_hits_map.get(m_c, False):
                         blue_col_hits[m_c] += 1
+                        if is_r2:
+                            blue_col_rec2[m_c] += 1
+                        if is_r3:
+                            blue_col_rec3[m_c] += 1
 
                 b_nums = all_lists[b_t]
                 b_next_set = all_sets[b_t + 1]
                 for p_i in range(20):
                     if b_nums[p_i] in b_next_set:
                         orig_pos_hits_bwin[p_i + 1] += 1
-                        if is_rec3:
-                            orig_pos_recent3[p_i + 1] += 1
+                        if is_r2:
+                            orig_pos_rec2[p_i + 1] += 1
+                        if is_r3:
+                            orig_pos_recent3_val = orig_pos_rec3[p_i + 1] + 1
+                            orig_pos_rec3[p_i + 1] = orig_pos_recent3_val
 
             prev1_blue_hits = local_meta[t_idx - 1]["blue_hit_by_col"] if (t_idx - 1) in local_meta else {}
             prev2_blue_hits = local_meta[t_idx - 2]["blue_hit_by_col"] if (t_idx - 2) in local_meta else {}
-
-            # Zliczamy statystyki każdej kuli w ostatnich 15 losowaniach (by mieć pełny obraz zachowania kuli np. 13)
-            ball_check_start = max(0, t_idx - max(w_size, 14))
-            ball_check_lists = all_lists[ball_check_start : t_idx + 1]
-            ball_check_sets = all_sets[ball_check_start : t_idx + 1]
-            ball_check_trans = len(ball_check_lists) - 1
+            prev3_blue_hits = local_meta[t_idx - 3]["blue_hit_by_col"] if (t_idx - 3) in local_meta else {}
 
             win_ball_freq = {b: 0 for b in range(1, 71)}
             win_ball_t1_repeats = {b: 0 for b in range(1, 71)}
@@ -767,25 +776,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     win_ball_freq[b] += 1
                     if k_idx < trans_count and b in win_sets[k_idx + 1]:
                         win_ball_t1_repeats[b] += 1
-
-            # Sprawdzamy w ostatnich 15 losowaniach: ile razy kula miała czerwone kółko 🔴 i czy po nim dała biały kwadrat ⬜ (Podwójny Węzeł)
-            ball_red_circle_count = {b: 0 for b in range(1, 71)}
-            ball_double_node_count = {b: 0 for b in range(1, 71)} # 🔴 -> ⬜
-            ball_15_prev_apps = {b: 0 for b in range(1, 71)}
-            ball_15_t1_hits = {b: 0 for b in range(1, 71)}
-
-            for k_i in range(ball_check_trans):
-                c_set = ball_check_sets[k_i]
-                n_set = ball_check_sets[k_i + 1]
-                p_set = ball_check_sets[k_i - 1] if k_i >= 1 else set()
-                for b in c_set:
-                    ball_15_prev_apps[b] += 1
-                    if b in n_set:
-                        ball_15_t1_hits[b] += 1
-                    if b in p_set:
-                        ball_red_circle_count[b] += 1
-                        if b in n_set:
-                            ball_double_node_count[b] += 1
 
             sq_1_ago = {p: False for p in range(1, 21)}
             sq_2_ago = {p: False for p in range(1, 21)}
@@ -811,107 +801,120 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 m_col, pos_white_hits = blue_col_map_now[pos_nr]
                 b_hits_cnt = blue_col_hits[m_col]
                 b_hit_rate = b_hits_cnt / max(1, blue_steps_avail)
+                b_r2 = blue_col_rec2[m_col]
+                b_r3 = blue_col_rec3[m_col]
 
-                # WŁASNA SKUTECZNOŚĆ POZYCJI KENO (np. Poz. 05 ma tylko 1/7 = 14.3%!)
                 pos_white_rate = pos_white_hits / trans_count
                 orig_bwin_cnt = orig_pos_hits_bwin[pos_nr]
                 orig_bwin_rate = orig_bwin_cnt / max(1, blue_steps_avail)
-                orig_rec3 = orig_pos_recent3[pos_nr]
-
-                # SKUTECZNOŚĆ SAMEJ KULI W PRZEJŚCIACH T->T+1 (w ostatnich 15 losowaniach)
-                b_apps_15 = ball_15_prev_apps[ball]
-                b_hits_15 = ball_15_t1_hits[ball]
-                ball_personal_t1_rate = (b_hits_15 / b_apps_15) if b_apps_15 > 0 else 0.285
+                o_r2 = orig_pos_rec2[pos_nr]
+                o_r3 = orig_pos_rec3[pos_nr]
 
                 in_prev1 = (ball in prev_set)
                 in_prev2 = (ball in prev2_set)
+
                 sq_d1 = sq_1_ago[pos_nr]
                 sq_d2 = sq_2_ago[pos_nr]
                 sq_d3 = sq_3_ago[pos_nr]
                 sq_n1 = sq_1_ago.get(pos_nr - 1, False) or sq_1_ago.get(pos_nr + 1, False)
+
                 b_u1 = prev1_blue_hits.get(m_col, False)
                 b_u2 = prev2_blue_hits.get(m_col, False)
+                b_u3 = prev3_blue_hits.get(m_col, False)
+                b_adj1 = prev1_blue_hits.get(m_col - 1, False) or prev1_blue_hits.get(m_col + 1, False)
+
+                ball_freq_in_win = win_ball_freq[ball]
+                ball_t1_in_win = win_ball_t1_repeats[ball]
 
                 # =========================================================================
-                # TWARDA BLOKADA V8: DLACZEGO KULA 13 (POZ. 05) MUSI ZOSTAĆ ODRZUCONA?
+                # NOWA WERYFIKACJA V9 — DLACZEGO 30 (Poz.09/M.1) I 38 (Poz.11/M.2) ODPADAJĄ,
+                # A WCHODZĄ AKTYWNE POZYCJE (JAK 39 NA M.09, 19 NA M.10, 21 NA POZ.06):
                 # =========================================================================
                 is_disqualified = False
-                verdict_str = "✅ Silny Kandydat"
+                verdict_str = "🔥 Aktywny Lider"
 
-                # Powód 1: Własna pozycja w Tabeli 1 jest w dolnej połowie (M.09 – M.20) LUB ma <28% własnych białych kwadratów!
-                # (Na zrzucie Poz. 05 z kulą 13 była dopiero na M.10/M.11 i miała tylko 1 biały kwadrat!)
-                if pos_white_rate < 0.28 or m_col > 9:
+                # Warunek 1: WYGASŁA POZYCJA I KOLUMNA M (Przypadek kul 30 i 38!)
+                # Jeśli w ostatnich 2 losowaniach (t-1, t-2) ani własna pozycja Keno nie dała białego kwadratu (o_r2 == 0),
+                # ani jej kolumna M w Tabeli Niebieskiej nie dała niebieskiego kwadratu (b_r2 == 0),
+                # to jej dawne trafienia sprzed 30 minut są HISTORIĄ (kolumna śpi)!
+                if o_r2 == 0 and b_r2 == 0:
                     is_disqualified = True
-                    verdict_str = f"❌ Słaba Poz.{pos_nr:02d} ({pos_white_hits}/{trans_count} ⬜ | M.{m_col:02d})"
+                    verdict_str = f"❄️ Wygasła (0 traf. na Poz.{pos_nr:02d} i M.{m_col:02d} w 2 ost.)"
 
-                # Powód 2: W ostatnich 3 losowaniach na tej pozycji nie było ani jednego białego kwadratu (kolumna jest martwa jak Poz. 05!)
-                elif orig_rec3 == 0 and not sq_d1 and not sq_d2:
+                # Warunek 2: Własna pozycja w ostatnich 3 grach miała 0 białych kwadratów (jak Poz.11 z kulą 38 od 6 kolejek!)
+                # i nie ma nawet czerwonego kółka na kuli
+                elif o_r3 == 0 and not in_prev1:
                     is_disqualified = True
-                    verdict_str = f"❄️ Martwa kolumna Poz.{pos_nr:02d} (0 ⬜ w 3 ost.)"
+                    verdict_str = f"❄️ Martwa Poz.{pos_nr:02d} (0 ⬜ w 3 ost. grach)"
 
-                # Powód 3: Kula ma słabą osobistą powtarzalność T+1 (np. kula 13 pojawia się często, ale prawie nigdy nie przechodzi dalej)
-                elif b_apps_15 >= 3 and ball_personal_t1_rate < 0.25:
+                # Warunek 3: Zarówno własna pozycja Keno (<25%) jak i kolumna M (<30%) mają słabą ogólną skuteczność
+                elif pos_white_rate < 0.26 and b_hit_rate < 0.32:
                     is_disqualified = True
-                    verdict_str = f"❌ Kula {ball:02d} rzadko powtarza ({b_hits_15}/{b_apps_15})"
+                    verdict_str = f"❌ Słaba Poz.{pos_nr:02d} ({pos_white_hits}/{trans_count}) i M.{m_col:02d} ({b_hits_cnt}/{blue_steps_avail})"
 
-                # Powód 4: Kula ma teraz czerwone kółko 🔴, ale wcześniej w oknie po czerwonym kółku ZAWSZE gasła (0 podwójnych węzłów)
-                elif in_prev1 and ball_red_circle_count[ball] >= 1 and ball_double_node_count[ball] == 0:
+                # Warunek 4: Przegrzana (3 trafienia pionowo pod rząd w Tabeli 1 lub Niebieskiej)
+                elif (sq_d1 and sq_d2 and sq_d3) or (b_u1 and b_u2 and b_u3):
                     is_disqualified = True
-                    verdict_str = f"⚠️ Kula {ball:02d} gaśnie po 🔴 (0 serii 3+)"
-
-                # Powód 5: Pozycja "spalona" (już 3 białe kwadraty pionowo pod rząd)
-                elif sq_d1 and sq_d2 and sq_d3:
-                    is_disqualified = True
-                    verdict_str = "⚠️ Spalona (3x ⬜ pod rząd)"
+                    verdict_str = "⚠️ Spalona (3x trafienie pionowo z rzędu)"
 
                 # =========================================================================
-                # PRAWDZIWA SZANSA % (WYŚWIETLANA W ZIELONYM BOKSIE ZAMIAST CUDZEGO M.10!):
-                # 50% wagi: własne białe kwadraty pozycji + 30% wagi: Tabela Niebieska + 20% wagi: powtarzalność samej kuli
+                # PUNKTACJA V9 (0 - 100 PKT): LICZY SIĘ AKTUALNY PRĄD NA KOLUMNIE + SIŁA TABELI 🟦/⬜
                 # =========================================================================
-                true_chance_pct = round(
-                    ((pos_white_rate * 0.50) + (b_hit_rate * 0.30) + (ball_personal_t1_rate * 0.20)) * 100.0, 1
-                )
-
-                # PUNKTACJA 0 - 100 PKT:
-                # 1. Własna siła pozycji Keno (0 - 35 pkt) -> tylko dla pozycji z TOP 8 (M.01 - M.08)!
-                pts_own_pos = min(35.0, (pos_white_rate / 0.50) * 35.0)
-
-                # 2. Tabela Niebieska 🟦 (0 - 25 pkt) -> liczy się TYLKO wtedy, gdy sama pozycja też jest mocna!
-                if m_col <= 8:
-                    pts_blue = min(18.0, (b_hit_rate / 0.50) * 18.0) + (7.0 if (b_u1 and not b_u2) else 0.0)
+                # 1. Tabela Niebieska 🟦 + Aktywność bezpośrednio w wierszu niżej (do 40 pkt)
+                pts_blue_rate = min(22.0, (b_hit_rate / 0.46) * 22.0)
+                if b_u1 and not b_u2:
+                    pts_blue_now = 14.0 + (4.0 if b_adj1 else 0.0)  # Niebieski kwadrat bezpośrednio w t-1!
+                elif b_u1 and b_u2 and not b_u3:
+                    pts_blue_now = 11.0
+                elif b_u2 and b_adj1:
+                    pts_blue_now = 9.0
+                elif b_adj1:
+                    pts_blue_now = 5.0
                 else:
-                    pts_blue = min(6.0, b_hit_rate * 12.0)
+                    pts_blue_now = 0.0
 
-                # 3. Ścieżka białych kwadratów ⬜ bezpośrednio pod pozycją (0 - 20 pkt)
+                score_blue_total = round(min(40.0, pts_blue_rate + pts_blue_now), 1)
+
+                # 2. Tabela 1 (Białe kwadraty ⬜ pod pozycją + Czerwone kółko 🔴) (do 40 pkt)
+                pts_white_rate = min(16.0, (pos_white_rate / 0.45) * 16.0)
                 if sq_d1 and not sq_d2:
-                    pts_white_path = 14.0 + (6.0 if sq_n1 else 0.0)
-                    path_str = "⬜ Świeży kwadrat pod nią!"
+                    pts_white_now = 14.0  # Biały kwadrat bezpośrednio pod tą liczbą w t-1!
+                    path_str = "⬜ Kwadrat bezpośrednio pod nią!"
                 elif sq_d1 and sq_d2 and not sq_d3:
-                    pts_white_path = 12.0
-                    path_str = "⬜⬜ Dwa kwadraty pod nią"
+                    pts_white_now = 11.0
+                    path_str = "⬜⬜ 2 kwadraty pod nią"
+                elif sq_d2 and sq_n1:
+                    pts_white_now = 7.0
+                    path_str = "⬜ Kwadrat w t-2 i obok"
                 elif sq_n1:
-                    pts_white_path = 6.0
-                    path_str = "⬜ Kwadrat obok"
+                    pts_white_now = 4.0
+                    path_str = "⬜ Tylko obok"
                 else:
-                    pts_white_path = 0.0
+                    pts_white_now = 0.0
                     path_str = "Brak ⬜ pod nią"
 
-                # 4. Zachowanie samej kuli + Kolumna "Najczęstsza" (0 - 20 pkt)
-                pts_ball_behavior = min(12.0, (ball_personal_t1_rate / 0.45) * 12.0)
-                if in_prev1 and ball_double_node_count[ball] >= 1:
-                    pts_ball_behavior = min(12.0, pts_ball_behavior + 4.0)
-                    path_str += " | 🔴+⬜ Węzeł"
-                elif in_prev1:
-                    path_str += " | 🔴 z T-1"
+                if in_prev1 and not in_prev2:
+                    pts_red = 10.0  # Świeże czerwone kółko (jak kula 19, 26, 41, 54 w #1521787!)
+                    path_str += " + 🔴 z T-1"
+                elif in_prev1 and in_prev2:
+                    pts_red = 5.0
+                    path_str += " + 🔥 Seria 3+"
+                else:
+                    pts_red = 0.0
 
+                score_white_red_total = round(min(40.0, pts_white_rate + pts_white_now + pts_red), 1)
+
+                # 3. Kolumna "Najczęstsza" + Powtórki Kuli T+1 (do 20 pkt)
                 mode_on_pos, mode_cnt_on_pos = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_on_pos and mode_cnt_on_pos >= min_thr)
-                pts_mode = 8.0 if (is_exact_mode and not is_disqualified) else (3.0 if (ball in all_modes_set_now and not is_disqualified) else 0.0)
+                pts_mode = 8.0 if (is_exact_mode and not is_disqualified) else (4.0 if (ball in all_modes_set_now and not is_disqualified) else 0.0)
                 mode_str = f"🎯 Lider Poz.{pos_nr:02d} (x{mode_cnt_on_pos})" if is_exact_mode else ("⭐ W 'Najczęstszej'" if ball in all_modes_set_now else "-")
 
-                raw_score = pts_own_pos + pts_blue + pts_white_path + pts_ball_behavior + pts_mode
-                # Zdyskwalifikowane pozycje (jak Poz. 05 z kulą 13) dostają cięcie o połowę (-35 pkt), by NIGDY nie wejść do TOP 5!
-                final_score = round(max(5.0, raw_score - 35.0 if is_disqualified else raw_score), 1)
+                pts_ball_t1 = min(12.0, ball_t1_in_win * 4.5)
+                score_freq_total = round(min(20.0, pts_mode + pts_ball_t1), 1)
+
+                raw_score = score_blue_total + score_white_red_total + score_freq_total
+                final_score = round(max(5.0, raw_score - 40.0 if is_disqualified else raw_score), 1)
 
                 candidates.append({
                     "pos_nr": pos_nr,
@@ -920,35 +923,45 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "trans_count": trans_count,
                     "pos_white_pct": round(pos_white_rate * 100.0, 1),
                     "b_hits_cnt": b_hits_cnt,
+                    "b_steps": blue_steps_avail,
                     "b_hit_pct": round(b_hit_rate * 100.0, 1),
-                    "ball_t1_str": f"{b_hits_15}/{b_apps_15} ({round(ball_personal_t1_rate*100, 0):.0f}%)",
-                    "true_chance_pct": true_chance_pct,
+                    "orig_bwin_cnt": orig_bwin_cnt,
+                    "active_now_hits": o_r2 + b_r2 + (1 if in_prev1 else 0),
                     "is_disq": 1 if is_disqualified else 0,
                     "Pozycja": f"Poz. {pos_nr:02d} (🟦 M.{m_col:02d})",
                     "Liczba": ball,
                     "Score": final_score,
-                    "Weryfikacja V8": verdict_str,
-                    "Własne ⬜ Pozycji": f"{pos_white_hits}/{trans_count} ({pos_white_rate*100:.1f}%)",
-                    "🟦 Kolumna M": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} ({b_hit_rate*100:.1f}%)",
-                    "Powtórki tej Kuli": f"{b_hits_15}x na {b_apps_15} szans",
-                    "Ścieżka pod Poz.": path_str,
+                    "Status V9 (Aktywność)": verdict_str,
+                    "🟦 Tabela Niebieska": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} ({b_hit_rate*100:.1f}%) | w 2 ost: {b_r2}x",
+                    "⬜ Własne Traf. Poz.": f"{pos_white_hits}/{trans_count} ({pos_white_rate*100:.1f}%) | w 2 ost: {o_r2}x",
+                    "Pod pozycją (T-1/T-2)": path_str,
+                    "Powtórki Kuli T+1": f"{ball_t1_in_win}x (na {ball_freq_in_win} wyst.)",
                     "⭐ 'Najczęstsza'": mode_str
                 })
 
+            # Główny ranking TOP 5: najpierw aktywne (is_disq == 0), potem wg najwyższego Score
             df_cand = pd.DataFrame(candidates).sort_values(
-                by=["is_disq", "Score", "pos_white_hits", "b_hits_cnt"],
+                by=["is_disq", "Score", "b_hits_cnt", "pos_white_hits"],
                 ascending=[True, False, False, False],
                 kind="mergesort"
             ).reset_index(drop=True)
 
-            return df_cand, win_ball_freq, win_ball_t1_repeats, all_modes_set_now, min_thr
+            # Złote Lokaty 🟦: wybierają 2 najsilniejsze AKTYWNE kolumny z Tabeli Pozycji Trafień 🟦 (np. Miejsce 09 i 10 mające 7/15 = 46.7%!),
+            # które nie są wygasłe (is_disq == 0)!
+            df_blue_gold = pd.DataFrame(candidates).sort_values(
+                by=["is_disq", "b_hits_cnt", "Score", "active_now_hits"],
+                ascending=[True, False, False, False],
+                kind="mergesort"
+            ).reset_index(drop=True)
+
+            return df_cand, df_blue_gold, win_ball_freq, win_ball_t1_repeats, all_modes_set_now, min_thr
 
         return score_at_t
 
     # =====================================================================
     # SKANER OPTYMALNEGO OKNA (OD 5 DO 20 LOSOWAŃ)
     # =====================================================================
-    with st.expander("🔍 SKANER NAJSKUTECZNIEJSZEGO OKNA V8 (Porównaj okna: 5, 6, 7, 8, 9, 10, 12, 15, 20)", expanded=False):
+    with st.expander("🔍 SKANER NAJSKUTECZNIEJSZEGO OKNA V9 (Porównaj okna: 5, 6, 7, 8, 9, 10, 12, 15, 20)", expanded=False):
         if st.button(f"🚀 Uruchom test porównawczy wszystkich okien (5 – 20) na ostatnich {actual_bt_steps} losowaniach", type="primary"):
             scan_windows = [5, 6, 7, 8, 9, 10, 12, 15, 20]
             scan_results = []
@@ -956,17 +969,17 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
             progress_bar = st.progress(0, text="Trwa testowanie okien od 5 do 20...")
             for idx_w, w_test in enumerate(scan_windows):
-                scorer_fn = run_engine_v8(w_test, w_test, actual_bt_steps)
+                scorer_fn = run_engine_v9(w_test, w_test, actual_bt_steps)
                 g1_hits, g2_hits, g_any_hits = 0, 0, 0
                 t5_hits_total = 0
                 slot_h = {s: 0 for s in range(1, 6)}
 
                 for step_t in range(latest_idx_scan - 1, latest_idx_scan - 1 - actual_bt_steps, -1):
-                    df_p, _, _, _, _ = scorer_fn(step_t)
+                    df_p, df_bg, _, _, _, _ = scorer_fn(step_t)
                     nxt_s = all_sets[step_t + 1]
 
-                    b1 = int(df_p.iloc[0]["Liczba"])
-                    b2 = int(df_p.iloc[1]["Liczba"])
+                    b1 = int(df_bg.iloc[0]["Liczba"])
+                    b2 = int(df_bg.iloc[1]["Liczba"])
                     h1, h2 = (b1 in nxt_s), (b2 in nxt_s)
                     if h1: g1_hits += 1
                     if h2: g2_hits += 1
@@ -984,9 +997,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 g_any_pct = (g_any_hits / actual_bt_steps) * 100.0
                 t5_avg_pct = (t5_hits_total / (actual_bt_steps * 5)) * 100.0
 
-                df_live_p, _, _, _, _ = scorer_fn(latest_idx_scan)
-                live_g1 = int(df_live_p.iloc[0]["Liczba"])
-                live_g2 = int(df_live_p.iloc[1]["Liczba"])
+                df_live_p, df_live_bg, _, _, _, _ = scorer_fn(latest_idx_scan)
+                live_g1 = int(df_live_bg.iloc[0]["Liczba"])
+                live_g2 = int(df_live_bg.iloc[1]["Liczba"])
 
                 scan_results.append({
                     "Okno (Losowań)": f"Okno {w_test} losowań",
@@ -995,7 +1008,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "Min. 1 z 2 Złotych Lokat": f"{g_any_hits}/{actual_bt_steps} ({g_any_pct:.1f}%)",
                     "Najlepszy Slot w TOP 5": f"Typ #{best_slot_nr}: {best_slot_cnt}/{actual_bt_steps} ({best_slot_pct:.1f}%)",
                     "Średnia całego TOP 5": f"{t5_avg_pct:.1f}% ({t5_hits_total}/{actual_bt_steps*5})",
-                    "Teraz wskazuje (Złote Lokaty)": f"Kule: {live_g1:02d} oraz {live_g2:02d}"
+                    "Teraz wskazuje (Złote Lokaty 🟦)": f"Kule: {live_g1:02d} oraz {live_g2:02d}"
                 })
                 progress_bar.progress((idx_w + 1) / len(scan_windows))
 
@@ -1007,20 +1020,30 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     # GŁÓWNE OBLICZENIE DLA WYBRANEGO OKNA
     # =====================================================================
     latest_idx = total_draws - 1
-    active_scorer = run_engine_v8(window_size, blue_lookback, actual_bt_steps)
-    df_predictions, latest_win_freq, latest_win_t1, latest_modes_set, min_mode_threshold = active_scorer(latest_idx)
+    active_scorer = run_engine_v9(window_size, blue_lookback, actual_bt_steps)
+    df_predictions, df_latest_blue_gold, latest_win_freq, latest_win_t1, latest_modes_set, min_mode_threshold = active_scorer(latest_idx)
     latest_curr_set = all_sets[latest_idx]
 
     top_5_Row = df_predictions.head(5)
     top_8_Row = df_predictions.head(8)
 
+    # 2 Złote Lokaty z aktywnych liderów Tabeli Niebieskiej 🟦 (nie-wygasłych!)
+    golden_row_1 = df_latest_blue_gold.iloc[0]
+    golden_row_2 = df_latest_blue_gold.iloc[1]
+
     bt_html_rows = []
     total_top5_hits = 0
     total_top8_hits = 0
+    golden_1_bt_hits = 0
+    golden_2_bt_hits = 0
+    golden_at_least_one_bt = 0
+
     top5_slot_hits = {slot: 0 for slot in range(1, 6)}
+    keno_pos_in_top5_selected = {p: 0 for p in range(1, 21)}
+    keno_pos_in_top5_hits = {p: 0 for p in range(1, 21)}
 
     for step_t in range(latest_idx - 1, latest_idx - 1 - actual_bt_steps, -1):
-        df_step_pred, _, _, _, _ = active_scorer(step_t)
+        df_step_pred, df_step_bg, _, _, _, _ = active_scorer(step_t)
         next_actual_set = all_sets[step_t + 1]
 
         top5_df = df_step_pred.head(5)
@@ -1029,6 +1052,20 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         top5_nums = top5_df["Liczba"].tolist()
         top8_nums = top8_df["Liczba"].tolist()
 
+        # Trafienia 2 Złotych Lokat 🟦 w historii (Przywrócona Kolumna!)
+        g1_ball = int(df_step_bg.iloc[0]["Liczba"])
+        g2_ball = int(df_step_bg.iloc[1]["Liczba"])
+        g1_m = int(df_step_bg.iloc[0]["blue_m"])
+        g2_m = int(df_step_bg.iloc[1]["blue_m"])
+        g1_hit = (g1_ball in next_actual_set)
+        g2_hit = (g2_ball in next_actual_set)
+        if g1_hit:
+            golden_1_bt_hits += 1
+        if g2_hit:
+            golden_2_bt_hits += 1
+        if g1_hit or g2_hit:
+            golden_at_least_one_bt += 1
+
         slot_cells_html = []
         for slot_idx, (_, r_pred) in enumerate(top5_df.iterrows()):
             slot_nr = slot_idx + 1
@@ -1036,9 +1073,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             k_pos = int(r_pred["pos_nr"])
             b_m = int(r_pred["blue_m"])
 
+            keno_pos_in_top5_selected[k_pos] += 1
             is_hit_slot = (b_val in next_actual_set)
             if is_hit_slot:
                 top5_slot_hits[slot_nr] += 1
+                keno_pos_in_top5_hits[k_pos] += 1
                 cell_box = (
                     f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
                     f"width:58px; height:36px; border:2px solid #00e676; border-radius:6px; "
@@ -1055,6 +1094,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 )
             slot_cells_html.append(f"<td style='padding:4px 4px; text-align:center; border-right:1px solid #232731;'>{cell_box}</td>")
 
+        # Przywrócona komórka 2 Złotych Lokat 🟦
+        g1_badge = f"<span style='padding:2px 6px; border:1.5px solid #ffd166; border-radius:4px; background:rgba(255,209,102,0.28); color:#fff; font-weight:bold;'>{g1_ball:02d}(M.{g1_m})🟩</span>" if g1_hit else f"<span style='color:#9da3af;'>{g1_ball:02d}(M.{g1_m})</span>"
+        g2_badge = f"<span style='padding:2px 6px; border:1.5px solid #00e676; border-radius:4px; background:rgba(0,230,118,0.25); color:#fff; font-weight:bold;'>{g2_ball:02d}(M.{g2_m})🟩</span>" if g2_hit else f"<span style='color:#9da3af;'>{g2_ball:02d}(M.{g2_m})</span>"
+        golden_cell_html = f"{g1_badge} &nbsp; {g2_badge}"
+
         hits_5_cnt = sum(1 for n in top5_nums if n in next_actual_set)
         hits_8_cnt = sum(1 for n in top8_nums if n in next_actual_set)
 
@@ -1068,6 +1112,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         <tr style='border-bottom: 1px solid #262a34;'>
             <td style='padding: 6px 8px; color: #9da3af; white-space: nowrap; font-size: 11px;'>#{all_ids[step_t]}<br><span style='font-size:10px; color:#6c7385;'>({all_times[step_t]})</span></td>
             <td style='padding: 6px 8px; font-weight: bold; color: #ffffff; white-space: nowrap; font-size: 11px; border-right:2px solid #333945;'>#{all_ids[step_t + 1]}</td>
+            <td style='padding: 6px 8px; text-align: center; white-space: nowrap; font-size: 11px; border-right:2px solid #333945;'>{golden_cell_html}</td>
             {''.join(slot_cells_html)}
             <td style='padding: 6px 8px; text-align: center; font-weight: bold; font-size: 13px; color: {h5_color}; background-color: {h5_bg}; border-left:2px solid #333945;'>{hits_5_cnt} / 5</td>
             <td style='padding: 6px 8px; text-align: center; font-weight: bold; font-size: 13px; color: #4da6ff;'>{hits_8_cnt} / 8</td>
@@ -1077,12 +1122,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
     sorted_slots = sorted(range(1, 6), key=lambda s: top5_slot_hits[s], reverse=True)
     best_slot_1, best_slot_2 = sorted_slots[0], sorted_slots[1]
-
-    # Złote Lokaty to zawsze 2 najlepsze zweryfikowane pozycje (lub 2 najskuteczniejsze sloty z testu 50 gier)
-    golden_row_1 = top_5_Row.iloc[best_slot_1 - 1]
-    golden_row_2 = top_5_Row.iloc[best_slot_2 - 1]
-    g1_bt_pct = (top5_slot_hits[best_slot_1] / actual_bt_steps) * 100.0
-    g2_bt_pct = (top5_slot_hits[best_slot_2] / actual_bt_steps) * 100.0
 
     curr_in_modes = [b for b in all_lists[latest_idx] if b in latest_modes_set]
     curr_modes_str = ", ".join(f"{b:02d}" for b in curr_in_modes) if curr_in_modes else "brak"
@@ -1095,8 +1134,8 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         b_num = int(r["Liczba"])
         p_num = int(r["pos_nr"])
         m_num = int(r["blue_m"])
-        w_hits = int(r["pos_white_hits"])
-        t_cnt = int(r["trans_count"])
+        b_cnt = int(r["b_hits_cnt"])
+        b_st = int(r["b_steps"])
         is_gold = b_num in gold_balls_set
         border_col = "#ffd166" if is_gold else "#00e676"
         bg_col = "rgba(255, 209, 102, 0.18)" if is_gold else "rgba(0, 230, 118, 0.14)"
@@ -1105,7 +1144,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             f"border:2px solid {border_col}; border-radius:8px; background:{bg_col};'>"
             f"<span style='font-size:13px; color:#d0d7de; font-weight:600;'>#{s_nr}:</span>"
             f"<span style='font-size:22px; font-weight:900; color:#ffffff; letter-spacing:0.5px;'>{b_num:02d}</span>"
-            f"<span style='font-size:13px; font-weight:bold; color:#ffd166;'>(Poz.{p_num:02d}: {w_hits}/{t_cnt} ⬜ | 🟦M.{m_num:02d})</span>"
+            f"<span style='font-size:13px; font-weight:bold; color:#ffd166;'>(Poz.{p_num:02d} | 🟦M.{m_num:02d}: {b_cnt}/{b_st})</span>"
             f"</div>"
         )
 
@@ -1114,35 +1153,35 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         f"border: 2px solid #00e676; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; "
         f"box-shadow: 0 4px 15px rgba(0, 230, 118, 0.18); font-family: sans-serif;'>"
         f"<div style='font-size: 14px; font-weight: bold; color: #b9f6ca; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>"
-        f"🎯 Wskazanie Algorytmu V8 (Okno Tab.1: {window_size} | Okno Tab.🟦: {blue_lookback}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
+        f"🎯 Wskazanie Algorytmu V9 (Okno Tab.1: {window_size} | Okno Tab.🟦: {blue_lookback}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
         f"</div>"
         f"<div style='margin-bottom: 14px;'>"
         f"<div style='font-size: 13px; color: #ffd166; font-weight: bold; margin-bottom: 8px;'>"
-        f"🏆 ZŁOTE LOKATY V8 (Po odrzuceniu słabych pozycji i kul gasnących po 🔴 — oceniane wg WŁASNYCH trafień pozycji!):"
+        f"🏆 ZŁOTE LOKATY 🟦 (2 najsilniejsze AKTYWNE kolumny z Tabeli Pozycji Trafień 🟦 — po odrzuceniu wygasłych kolumn jak M.1/M.2):"
         f"</div>"
         f"<div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center;'>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(255, 209, 102, 0.35);'>"
-        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Typ #{best_slot_1} ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Lider #1 🟦 ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #e63946; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_1['Liczba']):02d}</span>"
-        f"<span style='font-size: 15px; font-weight: 800; color: #4da6ff;'>"
-        f"Poz.{int(golden_row_1['pos_nr']):02d} (własne ⬜: {int(golden_row_1['pos_white_hits'])}/{int(golden_row_1['trans_count'])}) | <span style='color:#00e676;'>🟦M.{int(golden_row_1['blue_m']):02d}</span></span>"
-        f"<span style='font-size: 14px; color: #ffd166; font-weight: bold;'>— Slot trafia: {g1_bt_pct:.1f}%</span>"
+        f"<span style='font-size: 16px; font-weight: 800; color: #4da6ff;'>"
+        f"Poz.{int(golden_row_1['pos_nr']):02d} ({int(golden_row_1['pos_white_hits'])}/{int(golden_row_1['trans_count'])} ⬜) | "
+        f"<span style='color:#00e676;'>🟦M.{int(golden_row_1['blue_m']):02d}: {int(golden_row_1['b_hits_cnt'])}/{int(golden_row_1['b_steps'])} ({golden_row_1['b_hit_pct']:.1f}%)</span></span>"
         f"</div>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #00e676; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);'>"
-        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Typ #{best_slot_2} ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Lider #2 🟦 ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #0077b6; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_2['Liczba']):02d}</span>"
-        f"<span style='font-size: 15px; font-weight: 800; color: #4da6ff;'>"
-        f"Poz.{int(golden_row_2['pos_nr']):02d} (własne ⬜: {int(golden_row_2['pos_white_hits'])}/{int(golden_row_2['trans_count'])}) | <span style='color:#00e676;'>🟦M.{int(golden_row_2['blue_m']):02d}</span></span>"
-        f"<span style='font-size: 14px; color: #b9f6ca; font-weight: bold;'>— Slot trafia: {g2_bt_pct:.1f}%</span>"
+        f"<span style='font-size: 16px; font-weight: 800; color: #4da6ff;'>"
+        f"Poz.{int(golden_row_2['pos_nr']):02d} ({int(golden_row_2['pos_white_hits'])}/{int(golden_row_2['trans_count'])} ⬜) | "
+        f"<span style='color:#00e676;'>🟦M.{int(golden_row_2['blue_m']):02d}: {int(golden_row_2['b_hits_cnt'])}/{int(golden_row_2['b_steps'])} ({golden_row_2['b_hit_pct']:.1f}%)</span></span>"
         f"</div>"
         f"</div>"
         f"</div>"
         f"<div style='margin-bottom: 10px;'>"
-        f"<div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 6px;'>🔥 Pełne TOP 5 Zweryfikowanych Liczb (#1 – #5):</div>"
+        f"<div style='font-size: 13px; color: #e6e6e6; font-weight: bold; margin-bottom: 6px;'>🔥 Pełne TOP 5 Aktywnych Liczb wg łącznej siły Score (#1 – #5):</div>"
         f"<div>{top5_badges_html}</div>"
         f"</div>"
         f"<div style='display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px; color: #e6e6e6; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);'>"
@@ -1156,9 +1195,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     col_pred_table, col_hot_all = st.columns([1.45, 0.95], gap="large")
 
     with col_pred_table:
-        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (z weryfikacją własnych ⬜ pozycji i zachowania kuli)")
+        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (Weryfikacja Aktywności V9)")
         df_display_pred = df_predictions.drop(
-            columns=["pos_nr", "blue_m", "pos_white_hits", "trans_count", "pos_white_pct", "b_hits_cnt", "b_hit_pct", "ball_t1_str", "true_chance_pct", "is_disq"]
+            columns=["pos_nr", "blue_m", "pos_white_hits", "trans_count", "pos_white_pct", "b_hits_cnt", "b_steps", "b_hit_pct", "orig_bwin_cnt", "active_now_hits", "is_disq"]
         ).copy()
         st.dataframe(
             df_display_pred,
@@ -1166,11 +1205,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "Pozycja": st.column_config.TextColumn("Poz. (🟦 Miejsce)", width="medium"),
                 "Liczba": st.column_config.NumberColumn("Kula", width="small"),
                 "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-                "Weryfikacja V8": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
-                "Własne ⬜ Pozycji": st.column_config.TextColumn("Własne ⬜ Poz.", width="small"),
-                "🟦 Kolumna M": st.column_config.TextColumn("🟦 Kolumna M", width="small"),
-                "Powtórki tej Kuli": st.column_config.TextColumn("Powt. Kuli (15 gier)", width="small"),
-                "Ścieżka pod Poz.": st.column_config.TextColumn("Pod pozycją", width="medium"),
+                "Status V9 (Aktywność)": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
+                "🟦 Tabela Niebieska": st.column_config.TextColumn("🟦 Kolumna M", width="medium"),
+                "⬜ Własne Traf. Poz.": st.column_config.TextColumn("⬜ Własne Poz.", width="medium"),
+                "Pod pozycją (T-1/T-2)": st.column_config.TextColumn("Pod pozycją", width="medium"),
+                "Powtórki Kuli T+1": st.column_config.TextColumn("Powt. Kuli", width="small"),
                 "⭐ 'Najczęstsza'": st.column_config.TextColumn("⭐ 'Najczęstsza'", width="small"),
             },
             hide_index=True,
@@ -1195,7 +1234,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "t1_raw": latest_win_t1[b_num],
                 "in_last_raw": 1 if in_last else 0,
                 f"W oknie ({window_size})": f"{f_cnt}x ({f_cnt/window_size*100:.0f}%)",
-                "Powtórki T+1": f"{latest_win_t1[b_num]}x" if latest_win_t1[b_num] > 0 else "❌ 0x (Bez powt.)",
+                "Powtórki T+1": f"{latest_win_t1[b_num]}x" if latest_win_t1[b_num] > 0 else "❌ 0x",
                 "W kol. 'Najczęstsza'?": "⭐ TAK" if in_modes else "-",
                 "Teraz w grze?": f"✅ TAK (Poz. {pos_in_last:02d})" if in_last else "⏳ Przerwa"
             })
@@ -1216,11 +1255,18 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
     avg_top5 = (total_top5_hits / (actual_bt_steps * 5)) * 100
     avg_top8 = (total_top8_hits / (actual_bt_steps * 8)) * 100
+    g1_bt_pct = (golden_1_bt_hits / actual_bt_steps) * 100
+    g2_bt_pct = (golden_2_bt_hits / actual_bt_steps) * 100
+    g_any_pct = (golden_at_least_one_bt / actual_bt_steps) * 100
+    best_s1_pct = (top5_slot_hits[best_slot_1] / actual_bt_steps) * 100
+    best_s2_pct = (top5_slot_hits[best_slot_2] / actual_bt_steps) * 100
 
     st.info(
         f"📈 **Podsumowanie ze {actual_bt_steps} losowań wstecz (Okno Tab.1={window_size}, Tab.🟦={blue_lookback}):**\n"
-        f"- **Najlepsze sloty w TOP 5 (Złote Lokaty):** **Typ #{best_slot_1}** trafia **{top5_slot_hits[best_slot_1]}/{actual_bt_steps} ({g1_bt_pct:.1f}%)**, "
-        f"a **Typ #{best_slot_2}** trafia **{top5_slot_hits[best_slot_2]}/{actual_bt_steps} ({g2_bt_pct:.1f}%)**\n"
+        f"- **Złote Lokaty 🟦 (Lider #1 i #2):** Lider #1 trafił **{golden_1_bt_hits}/{actual_bt_steps} ({g1_bt_pct:.1f}%)**, "
+        f"Lider #2 trafił **{golden_2_bt_hits}/{actual_bt_steps} ({g2_bt_pct:.1f}%)** — w **{golden_at_least_one_bt}/{actual_bt_steps} ({g_any_pct:.1f}%)** gier wchodzi min. 1 Złota Lokata!\n"
+        f"- **Najlepsze sloty w TOP 5:** **Typ #{best_slot_1}** trafia **{top5_slot_hits[best_slot_1]}/{actual_bt_steps} ({best_s1_pct:.1f}%)**, "
+        f"a **Typ #{best_slot_2}** trafia **{top5_slot_hits[best_slot_2]}/{actual_bt_steps} ({best_s2_pct:.1f}%)**\n"
         f"- **Całe TOP 5 liczb:** **{total_top5_hits}/{actual_bt_steps*5} ({avg_top5:.1f}%)** | **Całe TOP 8:** **{total_top8_hits}/{actual_bt_steps*8} ({avg_top8:.1f}%)**"
     )
 
@@ -1237,8 +1283,8 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             "Trafienia": f"{s_hits} / {actual_bt_steps}",
             "Skuteczność %": round(s_pct, 1),
             "Aktualna Kula (Teraz w grze)": int(curr_row_s["Liczba"]),
-            "Własne ⬜ Pozycji": f"Poz. {int(curr_row_s['pos_nr']):02d} ({curr_row_s['Własne ⬜ Pozycji']})",
-            "Status Weryfikacji": curr_row_s["Weryfikacja V8"]
+            "Pozycja i Niebieska": f"Poz. {int(curr_row_s['pos_nr']):02d} (🟦 M.{int(curr_row_s['blue_m']):02d}: {int(curr_row_s['b_hits_cnt'])}/{int(curr_row_s['b_steps'])})",
+            "Status Weryfikacji": curr_row_s["Status V9 (Aktywność)"]
         })
 
     df_slot_sum = pd.DataFrame(slot_summary_rows).sort_values(
@@ -1247,7 +1293,49 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
     st.dataframe(df_slot_sum, hide_index=True, use_container_width=True, key="top5_slots_summary_tbl")
 
-    st.markdown(f"#### 📋 B. Szczegółowa historia {actual_bt_steps} losowań (5 kolumn TOP 5 — 🟩 = Trafienie w T+1)")
+    # PRZYWRÓCONA TABELA B: SKUTECZNOŚĆ ORYGINALNYCH POZYCJI KENO (POZ. 01 - 20) W TOP 5
+    st.markdown(f"#### 📊 B. Skuteczność oryginalnych Pozycji Keno (Poz. 01 – Poz. 20), gdy wejdą do TOP 5 ({actual_bt_steps} gier)")
+    kpos_summary_rows = []
+    for p_nr in range(1, 21):
+        sel_cnt = keno_pos_in_top5_selected[p_nr]
+        hit_cnt = keno_pos_in_top5_hits[p_nr]
+        hit_pct = (hit_cnt / sel_cnt * 100.0) if sel_cnt > 0 else 0.0
+        curr_ball_at_p = all_lists[latest_idx][p_nr - 1]
+        in_curr_top5 = p_nr in top_5_Row["pos_nr"].tolist()
+
+        kpos_summary_rows.append({
+            "Pozycja Keno": f"Poz. {p_nr:02d}",
+            "raw_hits": hit_cnt,
+            "raw_pct": hit_pct,
+            "Wybrana do TOP 5": f"{sel_cnt}x",
+            "Trafienia": f"{hit_cnt} / {sel_cnt}",
+            "Skuteczność %": round(hit_pct, 1),
+            "Aktualna Kula na tej Poz.": int(curr_ball_at_p),
+            "Czy teraz w TOP 5?": "🔥 TAK (W TOP 5)" if in_curr_top5 else "Poza TOP 5"
+        })
+
+    df_kpos_sum = pd.DataFrame(kpos_summary_rows).sort_values(
+        by=["raw_hits", "raw_pct"], ascending=[False, False], kind="mergesort"
+    ).drop(columns=["raw_hits", "raw_pct"])
+
+    st.dataframe(
+        df_kpos_sum,
+        column_config={
+            "Pozycja Keno": st.column_config.TextColumn("Pozycja (1-20)", width="small"),
+            "Wybrana do TOP 5": st.column_config.TextColumn("Weszła do TOP 5", width="small"),
+            "Trafienia": st.column_config.TextColumn("Trafienia", width="small"),
+            "Skuteczność %": st.column_config.ProgressColumn("Skuteczność %", format="%.1f%%", min_value=0, max_value=70),
+            "Aktualna Kula na tej Poz.": st.column_config.NumberColumn("Kula Teraz", width="small"),
+            "Czy teraz w TOP 5?": st.column_config.TextColumn("Status Teraz", width="medium"),
+        },
+        hide_index=True,
+        use_container_width=True,
+        height=380,
+        key="top5_kenopos_summary_tbl"
+    )
+
+    # PRZYWRÓCONA PEŁNA TABELA C Z KOLUMNĄ "🏆 2 ZŁOTE LOKATY 🟦"
+    st.markdown(f"#### 📋 C. Szczegółowa historia {actual_bt_steps} losowań (2 Złote Lokaty 🟦 + 5 kolumn TOP 5 — 🟩 = Trafienie w T+1)")
     bt_matrix_html = f"""
     <!DOCTYPE html>
     <html>
@@ -1268,6 +1356,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     <tr>
                         <th style="text-align:left;">Z losowania</th>
                         <th style="text-align:left; border-right:2px solid #333945;">Do (T+1)</th>
+                        <th style="border-right:2px solid #333945; color:#00aaff;">🏆 2 Złote Lokaty 🟦<br><span style="font-size:9px; color:#8a94a6;">(Lider #1: {golden_1_bt_hits}/{actual_bt_steps} | #2: {golden_2_bt_hits}/{actual_bt_steps})</span></th>
                         <th style="color:#ffd166;">Typ #1<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[1]}/{actual_bt_steps})</span></th>
                         <th style="color:#ffd166;">Typ #2<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[2]}/{actual_bt_steps})</span></th>
                         <th style="color:#ffd166;">Typ #3<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[3]}/{actual_bt_steps})</span></th>
@@ -1287,5 +1376,5 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     """
     components.html(bt_matrix_html, height=640, scrolling=False)
 
-# Wywołanie modułu V8:
-render_prediction_algorithm(df, default_window=8, default_blue_win=8, default_backtest=50)
+# Wywołanie modułu V9 (domyślnie okno 15 — zsynchronizowane 1:1 z górną Tabelą 1 i Tabelą Niebieską):
+render_prediction_algorithm(df, default_window=15, default_blue_win=15, default_backtest=50)
