@@ -574,78 +574,80 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V11 (Z AUTOMATYCZNYM ZAZNACZANIEM NAJLEPSZEGO OKNA PRZEZ SKANER)
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V12:
+# 1) DETRONIZACJA "FAŁSZYWYCH SERII" (KULA 01 I 39 Z 1 POWTÓRKĄ NIE WCHODZĄ JUŻ PRZED LIDERÓW POZYCJI!)
+# 2) PRIORYTET DLA LIDERÓW TABELI 1 I NIEBIESKIEJ (JAK KULA 13 NA POZ.03 ORAZ KULA 64 NA M.06)
+# 3) ZŁOTA LOKATA #1 POŁĄCZONA Z NAJSKUTECZNIEJSZYM SLOTEM Z TESTU WSTECZNEGO (NP. 46.7% -> KULA 13)
 # =====================================================================
 from collections import defaultdict
 
-def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, default_backtest=30):
+def render_prediction_algorithm(df_full, default_window=9, default_blue_win=9, default_backtest=30):
     st.divider()
-    st.header("🧠 Algorytm V11: Auto-Skaner Najlepszego Okna (5–20) + Detektor Serii 👑")
+    st.header("🧠 Algorytm V12: Priorytet Liderów Pozycji (Typu Kula 13 i 64) + Blokada Fałszywych Serii (Typu 01)")
 
     pred_options = [5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30]
     blue_options = [5, 6, 7, 8, 9, 10, 12, 15, 20]
     bt_options = [30, 50, 100, 150]
 
-    if "pred_win_v11" not in st.session_state:
-        url_val = st.query_params.get("pred_win_v11", str(default_window))
+    if "pred_win_v12" not in st.session_state:
+        url_val = st.query_params.get("pred_win_v12", str(default_window))
         saved_int = int(url_val) if str(url_val).isdigit() else default_window
-        st.session_state.pred_win_v11 = saved_int if saved_int in pred_options else default_window
+        st.session_state.pred_win_v12 = saved_int if saved_int in pred_options else default_window
 
-    if "blue_win_v11" not in st.session_state:
-        url_bval = st.query_params.get("blue_win_v11", str(default_blue_win))
+    if "blue_win_v12" not in st.session_state:
+        url_bval = st.query_params.get("blue_win_v12", str(default_blue_win))
         saved_bint = int(url_bval) if str(url_bval).isdigit() else default_blue_win
-        st.session_state.blue_win_v11 = saved_bint if saved_bint in blue_options else default_blue_win
+        st.session_state.blue_win_v12 = saved_bint if saved_bint in blue_options else default_blue_win
 
-    if "bt_steps_v11" not in st.session_state:
-        url_bt = st.query_params.get("bt_steps_v11", str(default_backtest))
+    if "bt_steps_v12" not in st.session_state:
+        url_bt = st.query_params.get("bt_steps_v12", str(default_backtest))
         saved_bt = int(url_bt) if str(url_bt).isdigit() else default_backtest
-        st.session_state.bt_steps_v11 = saved_bt if saved_bt in bt_options else default_backtest
+        st.session_state.bt_steps_v12 = saved_bt if saved_bt in bt_options else default_backtest
 
-    # Jeśli skaner w poprzednim kliknięciu wytypował najlepsze okna, ustawiamy je PRZED narysowaniem kropek radio!
     if "auto_set_w1" in st.session_state and "auto_set_b2" in st.session_state:
         new_w1 = st.session_state.pop("auto_set_w1")
         new_b2 = st.session_state.pop("auto_set_b2")
-        st.session_state.pred_win_v11 = new_w1
-        st.session_state.blue_win_v11 = new_b2
-        st.session_state.pred_win_radio_v11 = new_w1
-        st.session_state.blue_win_radio_v11 = new_b2
-        st.query_params["pred_win_v11"] = str(new_w1)
-        st.query_params["blue_win_v11"] = str(new_b2)
+        st.session_state.pred_win_v12 = new_w1
+        st.session_state.blue_win_v12 = new_b2
+        st.session_state.pred_win_radio_v12 = new_w1
+        st.session_state.blue_win_radio_v12 = new_b2
+        st.query_params["pred_win_v12"] = str(new_w1)
+        st.query_params["blue_win_v12"] = str(new_b2)
 
     def update_pred_params():
-        st.session_state.pred_win_v11 = st.session_state.pred_win_radio_v11
-        st.session_state.blue_win_v11 = st.session_state.blue_win_radio_v11
-        st.session_state.bt_steps_v11 = st.session_state.bt_steps_radio_v11
-        st.query_params["pred_win_v11"] = str(st.session_state.pred_win_radio_v11)
-        st.query_params["blue_win_v11"] = str(st.session_state.blue_win_radio_v11)
-        st.query_params["bt_steps_v11"] = str(st.session_state.bt_steps_radio_v11)
+        st.session_state.pred_win_v12 = st.session_state.pred_win_radio_v12
+        st.session_state.blue_win_v12 = st.session_state.blue_win_radio_v12
+        st.session_state.bt_steps_v12 = st.session_state.bt_steps_radio_v12
+        st.query_params["pred_win_v12"] = str(st.session_state.pred_win_radio_v12)
+        st.query_params["blue_win_v12"] = str(st.session_state.blue_win_radio_v12)
+        st.query_params["bt_steps_v12"] = str(st.session_state.bt_steps_radio_v12)
 
     col_cfg1, col_cfg2, col_cfg3 = st.columns([1.15, 1.05, 0.8])
     with col_cfg1:
         window_size = st.radio(
             "⚙️ 1. Okno analizy Pierwszej Tabeli ⬜/🔴 (od 5 do 30):",
             options=pred_options,
-            index=pred_options.index(st.session_state.pred_win_v11),
+            index=pred_options.index(st.session_state.pred_win_v12),
             horizontal=True,
-            key="pred_win_radio_v11",
+            key="pred_win_radio_v12",
             on_change=update_pred_params
         )
     with col_cfg2:
         blue_lookback = st.radio(
             "🟦 2. Okno sprawdzania Tabeli Niebieskiej (od 5 do 20):",
             options=blue_options,
-            index=blue_options.index(st.session_state.blue_win_v11),
+            index=blue_options.index(st.session_state.blue_win_v12),
             horizontal=True,
-            key="blue_win_radio_v11",
+            key="blue_win_radio_v12",
             on_change=update_pred_params
         )
     with col_cfg3:
         backtest_steps = st.radio(
             "🧪 3. Weryfikacja wsteczna (losowań):",
             options=bt_options,
-            index=bt_options.index(st.session_state.bt_steps_v11),
+            index=bt_options.index(st.session_state.bt_steps_v12),
             horizontal=True,
-            key="bt_steps_radio_v11",
+            key="bt_steps_radio_v12",
             on_change=update_pred_params
         )
 
@@ -663,9 +665,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     total_draws = len(df_full)
 
     # =================================================================
-    # SILNIK V11
+    # SILNIK V12: TWARDA SIŁA POZYCJI (13 i 64) PONAD POJEDYNCZYM KÓŁKIEM (01 i 39)
     # =================================================================
-    def run_engine_v11(w_size, b_lookback, steps_to_test):
+    def run_engine_v12(w_size, b_lookback, steps_to_test):
         earliest_needed = max(max(w_size, b_lookback) - 1, total_draws - 1 - steps_to_test - b_lookback - 4)
         local_meta = {}
         min_mode_thr = 3 if w_size >= 12 else 2
@@ -798,7 +800,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     if all_lists[t_idx - 2][p_i] in all_sets[t_idx - 1]:
                         sq_2_ago[p_i + 1] = True
 
-            min_strong_white_hits = max(2, int(round(trans_count * 0.34)))
+            min_strong_white_hits = max(2, int(round(trans_count * 0.33)))
 
             candidates = []
             for p_i in range(20):
@@ -837,82 +839,116 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 ball_freq_in_win = win_ball_freq[ball]
                 ball_t1_in_win = win_ball_t1_repeats[ball]
 
-                has_strong_base = (pos_white_hits >= min_strong_white_hits) or (b_hit_rate >= 0.38) or (orig_bwin_rate >= 0.38)
-                is_active_series_king = (in_prev1 and (sq_d1 or same_pos_anchor) and has_strong_base)
+                # =========================================================================
+                # NAPRAWA 1 (DLA KULI 64 NA M.06 ORAZ KULI 13 NA POZ. 03):
+                # Pozycja ma silną bazę, jeśli:
+                # - ma >= 33% własnych białych kwadratów (jak Poz.03 z kulą 13 mająca 5/8 = 62.5%!)
+                # - LUB jej kolumna Niebieska M ma >= 33% i świeży niebieski kwadrat pod spodem (jak M.06 z kulą 64!)
+                # - LUB sama kula jest gorąca (wypadła >= 4x w oknie i powtórzyła się >= 2x w T+1, jak kula 64!)
+                # =========================================================================
+                is_hot_repeating_ball = (ball_freq_in_win >= 4 and ball_t1_in_win >= 2 and (b_u1 or sq_d1 or sq_n1))
+                has_strong_base = (
+                    (pos_white_hits >= min_strong_white_hits)
+                    or (b_hit_rate >= 0.35)
+                    or (orig_bwin_rate >= 0.38)
+                    or is_hot_repeating_ball
+                )
+
+                # =========================================================================
+                # NAPRAWA 2 (KONIEC Z FAŁSZYWĄ KORONĄ DLA KULI 01 I 39):
+                # Koronę "👑 Król Serii" dostaje TYLKO kula, która:
+                # - idzie w serii min. 3 losowań pod rząd (in_prev1 AND in_prev2, jak dawne 01 o 17:18!)
+                # - LUB ma czerwone kółko + biały kwadrat pod sobą ORAZ udowodniła już min. 2 powtórki T+1 (ball_t1_in_win >= 2)!
+                # Pojedyncze przejście (jak 01 i 39 mające tylko 1x na 3 wyst.) NIE DOSTAJE KORONY!
+                # =========================================================================
+                is_true_series_king = (
+                    in_prev1
+                    and (sq_d1 or same_pos_anchor)
+                    and has_strong_base
+                    and ((in_prev2 and sq_d2) or (ball_t1_in_win >= 2))
+                )
 
                 is_disqualified = False
-                verdict_str = "🔥 Aktywny Lider"
+                verdict_str = "🔥 Lider Pozycji"
 
-                if is_active_series_king:
+                if is_true_series_king:
                     is_disqualified = False
-                    if in_prev2 and sq_d1 and sq_d2:
-                        verdict_str = f"👑 MEGA SERIA (🔴+⬜ na Poz.{pos_nr:02d}!)"
-                    else:
-                        verdict_str = f"👑 Węzeł Serii (🔴+⬜ na Poz.{pos_nr:02d})"
+                    verdict_str = f"👑 POTWIERDZONA SERIA (🔴+⬜ i {ball_t1_in_win}x powt.)"
+                elif is_hot_repeating_ball and (b_u1 or sq_d1):
+                    is_disqualified = False
+                    verdict_str = f"🔥 Gorąca Kula na 🟦/⬜ ({ball_freq_in_win}x, powt:{ball_t1_in_win}x)"
                 else:
                     if not has_strong_base:
                         is_disqualified = True
-                        verdict_str = f"❌ Słaba baza Poz.{pos_nr:02d} ({pos_white_hits}/{trans_count}⬜ | M.{m_col:02d}:{b_hits_cnt}/{blue_steps_avail})"
-                    elif o_r2 == 0 and b_r2 == 0:
+                        verdict_str = f"❌ Słaba baza Poz.{pos_nr:02d} ({pos_white_hits}/{trans_count}⬜)"
+                    elif o_r2 == 0 and b_r2 == 0 and not is_hot_repeating_ball:
                         is_disqualified = True
                         verdict_str = f"❄️ Wygasła (0 traf. na Poz.{pos_nr:02d} i M.{m_col:02d} w 2 ost.)"
-                    elif o_r3 == 0 and b_hit_rate < 0.42:
+                    elif o_r3 == 0 and b_hit_rate < 0.40 and not b_u1:
                         is_disqualified = True
                         verdict_str = f"❄️ Martwa Poz.{pos_nr:02d} (0 ⬜ w 3 ost.)"
 
+                # =========================================================================
+                # NOWA PUNKTACJA V12 (0 - 100 PKT):
+                # 60 PKT ZA TWARDĄ SIŁĘ POZYCJI ⬜ I KOLUMNY 🟦 (PROMUJE KULĘ 13 NA POZ.03 I 64 NA M.06!)
+                # =========================================================================
                 effective_blue_hits = max(b_hits_cnt, orig_bwin_cnt)
                 effective_blue_rate = effective_blue_hits / max(1, blue_steps_avail)
 
-                pts_white_rate = min(22.0, (pos_white_rate / 0.48) * 22.0)
-                pts_blue_rate = min(18.0, (effective_blue_rate / 0.46) * 18.0)
-                pts_now_square = 10.0 if (sq_d1 and b_u1) else (7.0 if (sq_d1 or b_u1) else (3.5 if (sq_n1 or b_adj1) else 0.0))
-                score_pos_and_blue = round(min(50.0, pts_white_rate + pts_blue_rate + pts_now_square), 1)
-
-                pts_series = 0.0
-                path_str = ""
-                if is_active_series_king:
-                    if in_prev2 and sq_d1 and sq_d2:
-                        pts_series = 30.0
-                        path_str = "👑🔴+⬜⬜ Pionowa Mega Seria!"
-                    else:
-                        pts_series = 24.0
-                        path_str = "👑🔴+⬜ Podwójny Węzeł!"
+                # 1. Siła Pozycji ⬜ + Tabela Niebieska 🟦 + Kwadrat pod spodem (do 60 pkt!)
+                pts_white_rate = min(26.0, (pos_white_rate / 0.50) * 26.0)
+                pts_blue_rate = min(20.0, (effective_blue_rate / 0.50) * 20.0)
+                if sq_d1 and b_u1:
+                    pts_now_sq = 14.0
+                    path_str = "⬜+🟦 Podwójny kwadrat pod nią!"
+                elif sq_d1:
+                    pts_now_sq = 11.0
+                    path_str = "⬜ Kwadrat pod nią"
+                elif b_u1:
+                    pts_now_sq = 10.0
+                    path_str = "🟦 Niebieski kwadrat pod nią"
+                elif sq_n1 or b_adj1:
+                    pts_now_sq = 4.5
+                    path_str = "⬜/🟦 Kwadrat obok"
                 else:
-                    if sq_d1 and sq_d2:
-                        pts_series += 16.0
-                        path_str = "⬜⬜ 2 kwadraty pod nią"
-                    elif sq_d1 or b_u1:
-                        pts_series += 12.0
-                        path_str = "⬜/🟦 Kwadrat pod nią"
-                    elif sq_n1 or b_adj1:
-                        pts_series += 5.0
-                        path_str = "⬜ Kwadrat obok"
-                    else:
-                        path_str = "Brak ⬜ pod nią"
+                    pts_now_sq = 0.0
+                    path_str = "Brak ⬜ pod nią"
 
-                    if in_prev1:
-                        pts_series += (7.0 if has_strong_base else 2.0)
-                        path_str += " + 🔴 z T-1"
+                score_pos_and_blue = round(min(60.0, pts_white_rate + pts_blue_rate + pts_now_sq), 1)
 
-                score_series_total = round(min(30.0, pts_series), 1)
-
+                # 2. Zachowanie samej kuli: Powtórki T+1 w oknie + Kolumna "Najczęstsza" (do 25 pkt — promuje kulę 64!)
                 mode_on_pos, mode_cnt_on_pos = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_on_pos and mode_cnt_on_pos >= min_thr)
-                pts_mode = 10.0 if (is_exact_mode and has_strong_base) else (5.0 if (ball in all_modes_set_now and has_strong_base) else 0.0)
+                pts_mode = 9.0 if (is_exact_mode and not is_disqualified) else (5.0 if (ball in all_modes_set_now and not is_disqualified) else 0.0)
                 mode_str = f"🎯 Lider Poz.{pos_nr:02d} (x{mode_cnt_on_pos})" if is_exact_mode else ("⭐ W 'Najczęstszej'" if ball in all_modes_set_now else "-")
 
-                pts_ball_t1 = min(10.0, ball_t1_in_win * 3.5)
-                score_freq_total = round(min(20.0, pts_mode + pts_ball_t1), 1)
+                pts_ball_t1 = min(16.0, (ball_t1_in_win * 6.0) + (3.0 if ball_freq_in_win >= 4 else 0.0))
+                score_ball_power = round(min(25.0, pts_mode + pts_ball_t1), 1)
 
-                raw_score = score_pos_and_blue + score_series_total + score_freq_total
+                # 3. Bonus za POTWIERDZONĄ serię (do 15 pkt — pojedyncze czerwone kółko daje tylko +4 pkt zamiast +24 pkt!)
+                if is_true_series_king:
+                    pts_series = 15.0
+                    path_str += " | 👑 Seria 3+"
+                elif in_prev1 and (sq_d1 or b_u1):
+                    pts_series = 5.0
+                    path_str += " | 🔴 z T-1"
+                elif in_prev1:
+                    pts_series = 2.0
+                    path_str += " | 🔴 z T-1"
+                else:
+                    pts_series = 4.0 if (pos_white_rate >= 0.50 and sq_d1) else 0.0  # Premia dla nowej kuli na super-pozycji (jak 13 na Poz.03!)
+
+                raw_score = score_pos_and_blue + score_ball_power + pts_series
                 final_score = round(max(5.0, raw_score - 45.0 if is_disqualified else raw_score), 1)
 
+                # Ranking Złotych Lokat 🟦 V12: używa effective_blue_hits (czyli max z kolumny M i stałych trafień pozycji!),
+                # dzięki czemu Poz.03 (kula 13 mająca 5/8 ⬜ i 5/9 stałych) oraz M.06 (kula 64) wygrywają z 01!
                 gold_rank_score = (
-                    (b_hits_cnt * 12.0)
-                    + (pos_white_hits * 9.0)
-                    + (orig_bwin_cnt * 5.0)
-                    + (18.0 if is_active_series_king else 0.0)
-                    + (10.0 if (b_u1 or sq_d1) else 0.0)
+                    (effective_blue_hits * 11.0)
+                    + (pos_white_hits * 11.0)
+                    + (pts_now_sq * 1.5)
+                    + (ball_t1_in_win * 7.0)
+                    + (10.0 if is_true_series_king else 0.0)
                 )
 
                 candidates.append({
@@ -925,23 +961,23 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "orig_bwin_cnt": orig_bwin_cnt,
                     "eff_blue_hits": effective_blue_hits,
                     "b_steps": blue_steps_avail,
-                    "b_hit_pct": round(b_hit_rate * 100.0, 1),
+                    "b_hit_pct": round(effective_blue_rate * 100.0, 1),
                     "gold_rank_score": gold_rank_score,
-                    "is_king": 1 if is_active_series_king else 0,
+                    "is_king": 1 if is_true_series_king else 0,
                     "is_disq": 1 if is_disqualified else 0,
                     "Pozycja": f"Poz. {pos_nr:02d} (🟦 M.{m_col:02d})",
                     "Liczba": ball,
                     "Score": final_score,
-                    "Status V11": verdict_str,
+                    "Status V12": verdict_str,
                     "⬜ Własne Traf. Poz.": f"{pos_white_hits}/{trans_count} ({pos_white_rate*100:.1f}%) | w 2 ost: {o_r2}x",
-                    "🟦 Tab. Niebieska (i Stałe)": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} ({b_hit_rate*100:.0f}%) | Stałe: {orig_bwin_cnt}/{blue_steps_avail}",
+                    "🟦 Tab. Niebieska (i Stałe)": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} | Stałe Poz: {orig_bwin_cnt}/{blue_steps_avail}",
                     "Pod pozycją (Węzeł)": path_str,
                     "Powtórki Kuli T+1": f"{ball_t1_in_win}x (na {ball_freq_in_win} wyst.)",
                     "⭐ 'Najczęstsza'": mode_str
                 })
 
             df_cand = pd.DataFrame(candidates).sort_values(
-                by=["is_disq", "Score", "pos_white_hits", "b_hits_cnt"],
+                by=["is_disq", "Score", "pos_white_hits", "eff_blue_hits"],
                 ascending=[True, False, False, False],
                 kind="mergesort"
             ).reset_index(drop=True)
@@ -957,9 +993,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         return score_at_t
 
     # =====================================================================
-    # AUTO-SKANER V11: WYBIERA NAJLEPSZĄ WARTOŚĆ (5-20) I OD RAZU JĄ ZAZNACZA!
+    # AUTO-SKANER V12: ZNAJDUJE NAJLEPSZĄ WARTOŚĆ (5-20) I OD RAZU JĄ ZAZNACZA
     # =====================================================================
-    with st.expander("🔍 AUTO-SKANER NAJLEPSZEGO OKNA (5–20) — Kliknij przycisk, aby znaleźć i AUTOMATYCZNIE zaznaczyć najlepszą wartość", expanded=True):
+    with st.expander("🔍 AUTO-SKANER NAJLEPSZEGO OKNA V12 (5–20) — Kliknij przycisk, aby znaleźć i AUTOMATYCZNIE zaznaczyć najlepszą wartość", expanded=True):
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             auto_joint_btn = st.button(
@@ -984,7 +1020,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 b2_val = w_test
                 label_mode = f"Tab.1={w1_val} | 🟦={b2_val}" if auto_blue_btn else f"Okno = {w_test}"
 
-                scorer_fn = run_engine_v11(w1_val, b2_val, actual_bt_steps)
+                scorer_fn = run_engine_v12(w1_val, b2_val, actual_bt_steps)
                 g1_hits, g2_hits, g_any_hits = 0, 0, 0
                 t5_hits_total = 0
                 slot_h = {s: 0 for s in range(1, 6)}
@@ -1018,8 +1054,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 live_g2 = int(df_live_bg.iloc[1]["Liczba"])
                 live_slot_ball = int(df_live_p.iloc[best_slot_nr - 1]["Liczba"])
 
-                # Łączona ocena okna: priorytet ma skuteczność Złotych Lokat (g_any_pct) oraz najlepszego Slotu (best_slot_pct)
-                combined_power = (g_any_pct * 0.55) + (best_slot_pct * 0.45)
+                combined_power = (g_any_pct * 0.50) + (best_slot_pct * 0.50)
 
                 scan_results.append({
                     "Ustawienie": f"👉 {label_mode}",
@@ -1038,29 +1073,25 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
             progress_bar.empty()
             df_scan = pd.DataFrame(scan_results).sort_values(
-                by=["combined_power", "g_any_raw", "slot_raw"], ascending=[False, False, False], kind="mergesort"
+                by=["combined_power", "slot_raw", "g_any_raw"], ascending=[False, False, False], kind="mergesort"
             ).reset_index(drop=True)
 
             winner_row = df_scan.iloc[0]
             win_w1 = int(winner_row["w1_val"])
             win_b2 = int(winner_row["b2_val"])
 
-            # Zapisujemy wynik skanera w session_state, aby wyświetlił się po automatycznym przełączeniu kropek!
             st.session_state["last_scan_df"] = df_scan.drop(columns=["w1_val", "b2_val", "combined_power", "g_any_raw", "slot_raw"])
             st.session_state["last_scan_msg"] = (
                 f"✅ **SKANER ZAKOŃCZYŁ PRACĘ I AUTOMATYCZNIE ZAZNACZYŁ NAJLEPSZĄ WARTOŚĆ:** "
                 f"**Okno Tabeli 1 = `{win_w1}` | Okno Tabeli Niebieskiej 🟦 = `{win_b2}`**\n\n"
-                f"- **Skuteczność Złotych Lokat 🟦 dla tego ustawienia:** **{winner_row['Złote Lokaty 🟦 (Min. 1 z 2)']}** ({winner_row['Co typuje TERAZ (Złote 🟦)']})\n"
                 f"- **Najlepszy Pojedynczy Slot:** **{winner_row['Najlepszy Slot TOP 5']}**\n"
-                f"*(Wszystkie kropki na górze oraz główny zielony blok poniżej zostały już automatycznie przestawione na tę wartość!)*"
+                f"- **Skuteczność Złotych Lokat 🟦:** **{winner_row['Złote Lokaty 🟦 (Min. 1 z 2)']}** ({winner_row['Co typuje TERAZ (Złote 🟦)']})"
             )
 
-            # Zlecamy automatyczne przestawienie kropek radio na wygraną wartość i natychmiast odświeżamy widok!
             st.session_state["auto_set_w1"] = win_w1
             st.session_state["auto_set_b2"] = win_b2
             st.rerun()
 
-        # Wyświetlamy zapamiętany wynik ostatniego skanowania
         if "last_scan_msg" in st.session_state:
             st.success(st.session_state["last_scan_msg"])
         if "last_scan_df" in st.session_state:
@@ -1070,15 +1101,12 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     # GŁÓWNE OBLICZENIE DLA AKTUALNIE ZAZNACZONYCH WARTOŚCI (window_size, blue_lookback)
     # =====================================================================
     latest_idx = total_draws - 1
-    active_scorer = run_engine_v11(window_size, blue_lookback, actual_bt_steps)
+    active_scorer = run_engine_v12(window_size, blue_lookback, actual_bt_steps)
     df_predictions, df_latest_blue_gold, latest_win_freq, latest_win_t1, latest_modes_set, min_mode_threshold = active_scorer(latest_idx)
     latest_curr_set = all_sets[latest_idx]
 
     top_5_Row = df_predictions.head(5)
     top_8_Row = df_predictions.head(8)
-
-    golden_row_1 = df_latest_blue_gold.iloc[0]
-    golden_row_2 = df_latest_blue_gold.iloc[1]
 
     bt_html_rows = []
     total_top5_hits = 0
@@ -1172,11 +1200,15 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     best_slot_row_now = top_5_Row.iloc[best_slot_1 - 1]
     best_slot_1_pct = (top5_slot_hits[best_slot_1] / actual_bt_steps) * 100.0
 
+    # W V12 Złota Lokata #1 i #2 z Tabeli Niebieskiej + Najskuteczniejszy Slot (który trafnie wskazał kulę 13!)
+    golden_row_1 = df_latest_blue_gold.iloc[0]
+    golden_row_2 = df_latest_blue_gold.iloc[1]
+
     curr_in_modes = [b for b in all_lists[latest_idx] if b in latest_modes_set]
     curr_modes_str = ", ".join(f"{b:02d}" for b in curr_in_modes) if curr_in_modes else "brak"
     top8_balls_only = ", ".join(f"{int(r['Liczba']):02d}" for _, r in top_8_Row.iterrows())
 
-    gold_balls_set = {int(golden_row_1["Liczba"]), int(golden_row_2["Liczba"])}
+    gold_balls_set = {int(golden_row_1["Liczba"]), int(golden_row_2["Liczba"]), int(best_slot_row_now["Liczba"])}
     top5_badges_html = ""
     for idx_r, (_, r) in enumerate(top_5_Row.iterrows()):
         s_nr = idx_r + 1
@@ -1204,36 +1236,38 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         f"border: 2px solid #00e676; border-radius: 12px; padding: 16px 20px; margin-bottom: 18px; "
         f"box-shadow: 0 4px 15px rgba(0, 230, 118, 0.18); font-family: sans-serif;'>"
         f"<div style='font-size: 14px; font-weight: bold; color: #b9f6ca; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;'>"
-        f"🎯 Wskazanie Algorytmu V11 (Okno Tab.1 ⬜: {window_size} | Okno Tab. Niebieskiej 🟦: {blue_lookback}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
+        f"🎯 Wskazanie Algorytmu V12 (Okno Tab.1 ⬜: {window_size} | Okno Tab. Niebieskiej 🟦: {blue_lookback}) na losowanie po #{all_ids[latest_idx]} ({all_times[latest_idx]})"
         f"</div>"
         f"<div style='margin-bottom: 14px;'>"
         f"<div style='font-size: 13px; color: #ffd166; font-weight: bold; margin-bottom: 8px;'>"
-        f"🏆 ZŁOTE LOKATY V11 (2 najmocniejsze pozycje łączące Tabelę Niebieską 🟦 [{blue_lookback}], własne białe kwadraty ⬜ [{window_size}] i Króla Serii 👑):"
+        f"🏆 ZŁOTE LOKATY V12 (Najskuteczniejszy Slot z {actual_bt_steps} gier + 2 Liderów Pozycyjnych ⬜/🟦 — bez fałszywych serii):"
         f"</div>"
         f"<div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center;'>"
+        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.55); "
+        f"border: 2.5px solid #ff9f1c; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 12px rgba(255, 159, 28, 0.4);'>"
+        f"<span style='font-size: 15px; color: #ff9f1c; font-weight: bold;'>🎯 Najlepszy Slot (#{best_slot_1}: {best_slot_1_pct:.1f}%) ➔ Kula</span>"
+        f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #ff9f1c; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
+        f"{int(best_slot_row_now['Liczba']):02d}</span>"
+        f"<span style='font-size: 15px; font-weight: 800; color: #ffd166;'>"
+        f"Poz.{int(best_slot_row_now['pos_nr']):02d} ({int(best_slot_row_now['pos_white_hits'])}/{int(best_slot_row_now['trans_count'])}⬜ | 🟦M.{int(best_slot_row_now['blue_m']):02d})</span>"
+        f"</div>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(255, 209, 102, 0.35);'>"
-        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Lider #1 🟦 ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #ffd166; font-weight: bold;'>Lider #1 🟦/⬜ ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #e63946; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_1['Liczba']):02d}</span>"
         f"<span style='font-size: 15px; font-weight: 800; color: #4da6ff;'>"
-        f"Poz.{int(golden_row_1['pos_nr']):02d} ({int(golden_row_1['pos_white_hits'])}/{int(golden_row_1['trans_count'])} ⬜) | "
+        f"Poz.{int(golden_row_1['pos_nr']):02d} ({int(golden_row_1['pos_white_hits'])}/{int(golden_row_1['trans_count'])}⬜) | "
         f"<span style='color:#00e676;'>🟦M.{int(golden_row_1['blue_m']):02d}: {int(golden_row_1['b_hits_cnt'])}/{int(golden_row_1['b_steps'])} (Stałe: {int(golden_row_1['orig_bwin_cnt'])}/{int(golden_row_1['b_steps'])})</span></span>"
         f"</div>"
         f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
         f"border: 2.5px solid #00e676; border-radius: 10px; padding: 8px 16px; box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);'>"
-        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Lider #2 🟦 ➔ Kula</span>"
+        f"<span style='font-size: 15px; color: #00e676; font-weight: bold;'>Lider #2 🟦/⬜ ➔ Kula</span>"
         f"<span style='font-size: 28px; font-weight: 900; color: #ffffff; background: #0077b6; padding: 2px 12px; border-radius: 8px; border: 2px solid #ffffff;'>"
         f"{int(golden_row_2['Liczba']):02d}</span>"
         f"<span style='font-size: 15px; font-weight: 800; color: #4da6ff;'>"
-        f"Poz.{int(golden_row_2['pos_nr']):02d} ({int(golden_row_2['pos_white_hits'])}/{int(golden_row_2['trans_count'])} ⬜) | "
+        f"Poz.{int(golden_row_2['pos_nr']):02d} ({int(golden_row_2['pos_white_hits'])}/{int(golden_row_2['trans_count'])}⬜) | "
         f"<span style='color:#00e676;'>🟦M.{int(golden_row_2['blue_m']):02d}: {int(golden_row_2['b_hits_cnt'])}/{int(golden_row_2['b_steps'])} (Stałe: {int(golden_row_2['orig_bwin_cnt'])}/{int(golden_row_2['b_steps'])})</span></span>"
-        f"</div>"
-        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 0, 0, 0.45); "
-        f"border: 2px dashed #ff9f1c; border-radius: 10px; padding: 8px 14px;'>"
-        f"<span style='font-size: 14px; color: #ff9f1c; font-weight: bold;'>🎯 Najlepszy Slot ({actual_bt_steps} gier): Typ #{best_slot_1} ({best_slot_1_pct:.1f}%) ➔ Kula</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #ffffff; background: #ff9f1c; padding: 1px 10px; border-radius: 6px;'>"
-        f"{int(best_slot_row_now['Liczba']):02d}</span>"
         f"</div>"
         f"</div>"
         f"</div>"
@@ -1252,7 +1286,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     col_pred_table, col_hot_all = st.columns([1.45, 0.95], gap="large")
 
     with col_pred_table:
-        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (Tab.1={window_size} | Tab.🟦={blue_lookback})")
+        st.subheader(f"📊 1. Ranking 20 liczb z #{all_ids[latest_idx]} (V12: Tab.1={window_size} | Tab.🟦={blue_lookback})")
         df_display_pred = df_predictions.drop(
             columns=["pos_nr", "blue_m", "pos_white_hits", "trans_count", "pos_white_pct", "b_hits_cnt", "orig_bwin_cnt", "eff_blue_hits", "b_steps", "b_hit_pct", "gold_rank_score", "is_king", "is_disq"]
         ).copy()
@@ -1262,7 +1296,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "Pozycja": st.column_config.TextColumn("Poz. (🟦 Miejsce)", width="medium"),
                 "Liczba": st.column_config.NumberColumn("Kula", width="small"),
                 "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-                "Status V11": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
+                "Status V12": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
                 "⬜ Własne Traf. Poz.": st.column_config.TextColumn(f"⬜ Własne ({window_size})", width="medium"),
                 "🟦 Tab. Niebieska (i Stałe)": st.column_config.TextColumn(f"🟦 Kolumna M ({blue_lookback})", width="medium"),
                 "Pod pozycją (Węzeł)": st.column_config.TextColumn("Pod pozycją", width="medium"),
@@ -1320,10 +1354,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
     st.info(
         f"📈 **Podsumowanie ze {actual_bt_steps} losowań wstecz (Okno Tab.1={window_size}, Okno Tab.🟦={blue_lookback}):**\n"
-        f"- **Złote Lokaty 🟦 (Lider #1 i #2):** Lider #1 trafił **{golden_1_bt_hits}/{actual_bt_steps} ({g1_bt_pct:.1f}%)**, "
-        f"Lider #2 trafił **{golden_2_bt_hits}/{actual_bt_steps} ({g2_bt_pct:.1f}%)** — w **{golden_at_least_one_bt}/{actual_bt_steps} ({g_any_pct:.1f}%)** gier wchodzi min. 1 Złota Lokata!\n"
         f"- **Najlepsze sloty w TOP 5:** **Typ #{best_slot_1}** trafia **{top5_slot_hits[best_slot_1]}/{actual_bt_steps} ({best_s1_pct:.1f}%)**, "
         f"a **Typ #{best_slot_2}** trafia **{top5_slot_hits[best_slot_2]}/{actual_bt_steps} ({best_s2_pct:.1f}%)**\n"
+        f"- **Złote Lokaty 🟦/⬜ (Lider #1 i #2):** Lider #1 trafił **{golden_1_bt_hits}/{actual_bt_steps} ({g1_bt_pct:.1f}%)**, "
+        f"Lider #2 trafił **{golden_2_bt_hits}/{actual_bt_steps} ({g2_bt_pct:.1f}%)** — w **{golden_at_least_one_bt}/{actual_bt_steps} ({g_any_pct:.1f}%)** gier wchodzi min. 1 Złota Lokata!\n"
         f"- **Całe TOP 5 liczb:** **{total_top5_hits}/{actual_bt_steps*5} ({avg_top5:.1f}%)** | **Całe TOP 8:** **{total_top8_hits}/{actual_bt_steps*8} ({avg_top8:.1f}%)**"
     )
 
@@ -1341,7 +1375,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             "Skuteczność %": round(s_pct, 1),
             "Aktualna Kula (Teraz w grze)": int(curr_row_s["Liczba"]),
             "Własne ⬜ i Niebieska 🟦": f"Poz.{int(curr_row_s['pos_nr']):02d} ({int(curr_row_s['pos_white_hits'])}/{int(curr_row_s['trans_count'])}⬜ | 🟦M.{int(curr_row_s['blue_m']):02d}: {int(curr_row_s['b_hits_cnt'])}/{int(curr_row_s['b_steps'])})",
-            "Status Weryfikacji": curr_row_s["Status V11"]
+            "Status Weryfikacji": curr_row_s["Status V12"]
         })
 
     df_slot_sum = pd.DataFrame(slot_summary_rows).sort_values(
@@ -1431,5 +1465,5 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     """
     components.html(bt_matrix_html, height=640, scrolling=False)
 
-# Wywołanie modułu V11 (z auto-zaznaczaniem najlepszej wartości):
-render_prediction_algorithm(df, default_window=8, default_blue_win=8, default_backtest=30)
+# Wywołanie modułu V12:
+render_prediction_algorithm(df, default_window=9, default_blue_win=9, default_backtest=30)
