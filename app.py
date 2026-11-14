@@ -804,7 +804,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
             # Zliczamy wystąpienia i powtórki kul w oknie 15 (by nie gubić powtórek przy krótkim oknie 7!)
             w15_start_idx = max(0, t_idx - 14)
-            w15_lists_ slice = all_lists[w15_start_idx : t_idx + 1] if False else all_lists[w15_start_idx : t_idx + 1]
+            w15_lists_slice = all_lists[w15_start_idx : t_idx + 1]
             w15_sets_slice = all_sets[w15_start_idx : t_idx + 1]
 
             win_ball_freq = {b: 0 for b in range(1, 71)}
