@@ -575,17 +575,17 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V18:
-# 1) GOTOWE ZESTAWY DO OBSTAWIANIA NA 2, 3 LUB 4 TRAFIENIA (PARA, TRÓJKA, CZWÓRKA + KOSZYK TOP 8)
-# 2) WYMÓG ŻYWEGO KWADRATU W T-1 (PROMUJE TRAFIONE 50, 61 I 21 ZAMIAST PUSTEJ POD SPODEM 19!)
-# 3) MACIERZ 9 OKIEN (5–20) POKAZUJE 4 LICZBY W KAŻDYM OKNIE + HISTORIĘ TRAFIEŃ 2x / 3x / 4x (30 GIER)
-# 4) PRZYWRÓCONE WSZYSTKIE TABELE: PEŁNY PASEK TOP 5/TOP 8, TABELA A, TABELA B ORAZ TABELA C!
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V20 (SKANER NAJLEPSZEJ PARY 2 z 2 ZE WSZYSTKICH KOMBINACJI TOP 5):
+# 1) BADA WSZYSTKIE 10 KOMBINACJI PAR (#1+#2, #1+#3, #2+#4, #3+#4...) WEWNĄTRZ TOP 5 KAŻDEGO OKNA
+# 2) BADA WSZYSTKIE 10 KOMBINACJI TRÓJEK WEWNĄTRZ TOP 5 (MAKSYMALIZACJA TRAFIEŃ 2+ I 3+)
+# 3) DODATKOWY WIERSZ W MACIERZY 9 OKIEN: "💎 NAJLEPSZA PARA 2 z 2" + OZNACZENIE TRAFIEŃ 💎2/2 W HISTORII
 # =====================================================================
 from collections import defaultdict
+from itertools import combinations
 
-def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, default_backtest=10):
+def render_prediction_algorithm(df_full, default_window=9, default_blue_win=9, default_backtest=10):
     st.divider()
-    st.header("🧠 Algorytm V18: Zestawy na 2, 3 i 4 Trafienia + Macierz 9 Okien (5–20) + Pełne Tabele A, B i C")
+    st.header("🧠 Algorytm V20: Skaner Najlepszej Pary Dubletowej (2 z 2) z Kombinacji TOP 5 + Macierz 9 Okien")
 
     all_windows = [5, 6, 7, 8, 9, 10, 12, 15, 20]
     matrix_bt_steps = 30
@@ -603,9 +603,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     latest_idx = total_draws - 1
 
     # =================================================================
-    # SILNIK V18: WYMÓG ŻYWEGO KWADRATU POD POZYCJĄ (50, 61, 21 > 19)
+    # SILNIK V20: PROMOWANIE KUL W FAZIE WZROSTOWEJ (36-58%) + WYBÓR TOP 5
     # =================================================================
-    def run_engine_v18(w_size, b_lookback, steps_to_test):
+    def run_engine_v20(w_size, b_lookback, steps_to_test):
         earliest_needed = max(max(w_size, b_lookback, 15) - 1, total_draws - 1 - steps_to_test - max(b_lookback, 15) - 4)
         local_meta = {}
         min_mode_thr = 3 if w_size >= 12 else 2
@@ -815,16 +815,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 b_adj1 = prev1_blue_hits.get(m_col - 1, False) or prev1_blue_hits.get(m_col + 1, False)
 
                 ball_freq_in_win = win_ball_freq[ball]
+                ball_freq_rate = ball_freq_in_win / max(1, w_size)
                 ball_t1_in_win = win_ball_t1_repeats[ball]
                 ball_t1_15 = ball_15_t1_repeats[ball]
                 ball_f_15 = ball_15_freq[ball]
 
-                # =========================================================================
-                # NAPRAWA V18 (DLACZEGO 21, 50 I 61 WYGRYWAJĄ Z 19!):
-                # Sprawdzamy, czy pozycja ma ŻYWY KWADRAT w ostatnim losowaniu T-1 (sq_d1 lub b_u1 lub transfer 🔴)!
-                # Kula 21 (Poz.05) ma bezpośrednio pod sobą biały kwadrat 12⬜ (sq_d1=True) i 7x wystąpień w 15 grach!
-                # Kula 19 (Poz.04) NIE MA pod sobą ani białego kwadratu (sq_d1=False), ani niebieskiego (b_u1=False) i 0x powt. T+1!
-                # =========================================================================
                 has_direct_t1_square = (sq_d1 or b_u1 or is_transfer_from_strong_pos)
                 is_dead_blue_col = (b_hit_rate < 0.25 and b_r2 == 0)
                 has_recent_activity = (o_r2 >= 1) or (b_r2 >= 1) or has_direct_t1_square
@@ -849,6 +844,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     and ((in_prev2 and sq_d2) or (ball_t1_in_win >= min_hot_t1) or (ball_t1_15 >= 2))
                 )
 
+                is_sweet_spot_ball = (0.36 <= ball_freq_rate <= 0.58 and (ball_t1_in_win >= 2 or ball_t1_15 >= 2))
+                is_overheated_ball = (ball_freq_rate > 0.62 and not (in_prev1 and sq_d1))
+
                 is_disqualified = False
                 verdict_str = "🔥 Lider Pozycji"
 
@@ -869,7 +867,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                         is_disqualified = True
                         verdict_str = "❄️ Wygasła (0 traf. w 2 ost.)"
                     elif not has_direct_t1_square and ball_t1_15 == 0:
-                        # Blokuje kulę 19 (Poz.04: brak kwadratu w T-1 i 0x powtórek kuli w T+1)!
                         is_disqualified = True
                         verdict_str = "⏳ Brak kwadratu w T-1 i 0x powt. kuli"
                     elif is_dead_blue_col and not sq_d1:
@@ -882,10 +879,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                         is_disqualified = True
                         verdict_str = "❄️ Martwa od 3 gier"
 
-                if 0.35 <= eff_pos_white_rate <= 0.64:
+                if 0.35 <= eff_pos_white_rate <= 0.62:
                     pts_white_pos = 22.0
-                elif eff_pos_white_rate > 0.64:
-                    pts_white_pos = 18.0
+                elif eff_pos_white_rate > 0.62:
+                    pts_white_pos = 17.5
                 else:
                     pts_white_pos = min(17.0, (eff_pos_white_rate / 0.35) * 17.0)
 
@@ -894,7 +891,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
                 pts_blue_col = min(14.0, (b_hit_rate / 0.48) * 14.0) + min(3.0, (orig_bwin_rate / 0.45) * 3.0)
 
-                # Zwiększona premia za żywy kwadrat bezpośrednio w T-1 (promuje 50, 61 i 21 ponad 19!)
                 if sq_d1 and b_u1:
                     pts_now_sq = 17.0
                     path_str = "⬜+🟦 Podwójny kwadrat pod nią!"
@@ -912,7 +908,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     path_str = "Tylko w t-2 i obok (brak w T-1)"
                 elif o_r2 >= 1 or b_r2 >= 1:
                     pts_now_sq = 3.0
-                    path_str = f"Tylko w t-2 (brak w T-1)"
+                    path_str = "Tylko w t-2 (brak w T-1)"
                 else:
                     pts_now_sq = 0.0
                     path_str = "Brak trafień w 2 ost."
@@ -921,22 +917,25 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
                 mode_on_pos, mode_cnt_on_pos = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_on_pos and mode_cnt_on_pos >= min_thr)
-                pts_mode = 8.0 if (is_exact_mode and not is_disqualified) else (4.5 if (ball in all_modes_set_now and not is_disqualified) else 0.0)
+                pts_mode = 7.5 if (is_exact_mode and not is_disqualified) else (4.0 if (ball in all_modes_set_now and not is_disqualified) else 0.0)
                 mode_str = f"🎯 Lider Poz.{pos_nr:02d} (x{mode_cnt_on_pos})" if is_exact_mode else ("⭐ W 'Najczęstszej'" if ball in all_modes_set_now else "-")
 
-                # Docenienie kul często wypadających w 15 losowaniach i mających powtórki T+1 (jak kula 21: 7x w 15 i 2x powt. T+1!)
-                pts_ball_t1 = min(14.0, (ball_t1_in_win * 4.5) + (ball_t1_15 * 3.0) + (2.5 if ball_f_15 >= 6 else 0.0))
+                sweet_ball_bonus = 5.0 if is_sweet_spot_ball else (-4.5 if is_overheated_ball else 0.0)
+                pts_ball_t1 = min(15.0, max(0.0, (ball_t1_in_win * 4.2) + (ball_t1_15 * 2.5) + sweet_ball_bonus))
                 score_ball_power = round(min(22.0, pts_mode + pts_ball_t1), 1)
 
                 if is_true_series_king:
                     pts_series = 14.0
                     path_str += " | 👑 Seria"
                 elif is_transfer_from_strong_pos:
-                    pts_series = 11.0
+                    pts_series = 11.5
                     path_str += f" | 🔥 Seria z P{source_pos:02d}"
+                elif is_sweet_spot_ball and has_direct_t1_square:
+                    pts_series = 11.0
+                    path_str += " | 🎯 Złota Fala Kuli"
                 elif is_top_w15_leader and has_direct_t1_square and ball_t1_15 >= 2:
-                    pts_series = 10.5
-                    path_str += f" | 🏆 Lider 15 + Aktywna Kula"
+                    pts_series = 10.0
+                    path_str += " | 🏆 Lider 15 + Aktywna Kula"
                 elif in_prev1 and has_direct_t1_square:
                     pts_series = 6.5
                     path_str += " | 🔴 z T-1"
@@ -946,8 +945,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 raw_score = score_pos_and_blue + score_ball_power + pts_series
                 final_score = round(max(5.0, raw_score - 55.0 if is_disqualified else raw_score), 1)
 
-                # W V18 Złote Lokaty są w 100% spójne z głównym Score i wymagają żywego kwadratu w T-1!
-                gold_rank_score = final_score + (6.0 if has_direct_t1_square else -15.0)
+                gold_rank_score = final_score + (6.0 if has_direct_t1_square else -15.0) + (3.5 if is_sweet_spot_ball else 0.0)
 
                 w_disp_str = (
                     f"{pos_white_hits}/{trans_count} (z P{source_pos:02d}:{source_white_hits}/{trans_count}) | z 15: {w15_hits}/14"
@@ -973,7 +971,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "Pozycja": f"Poz. {pos_nr:02d} (🟦 M.{m_col:02d})",
                     "Liczba": ball,
                     "Score": final_score,
-                    "Status V18": verdict_str,
+                    "Status V20": verdict_str,
                     "⬜ Własne Poz. (i z 15)": w_disp_str,
                     "🟦 Kolumna M (i Stałe)": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} | Stałe: {orig_bwin_cnt}/{blue_steps_avail}",
                     "Pod pozycją (Węzeł)": path_str,
@@ -998,115 +996,215 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         return score_at_t
 
     # =====================================================================
-    # OBLICZANIE MACIERZY 9 OKIEN (5, 6, 7, 8, 9, 10, 12, 15, 20) — PO 4 LICZBY W KAŻDYM OKNIE!
+    # OBLICZANIE MACIERZY 9 OKIEN + SKANER WSZYSTKICH 10 PAR (2 z 2) I 10 TRÓJEK WEWNĄTRZ TOP 5!
     # =====================================================================
+    all_pair_combos = list(combinations(range(5), 2))    # 10 kombinacji par wewnątrz TOP 5: (0,1), (0,2), ..., (3,4)
+    all_triple_combos = list(combinations(range(5), 3))  # 10 kombinacji trójek wewnątrz TOP 5
+
     win_scorers = {}
-    win_live_top4 = {}
+    win_live_top5 = {}
     win_history_cells = {w: [] for w in all_windows}
     win_stats_10 = {
-        w: {"pair_any": 0, "pair_2of2": 0, "top4_any": 0, "top4_2plus": 0, "top4_3plus": 0, "total_balls_4": 0}
+        w: {"top5_2plus": 0, "top5_3plus": 0, "top4_2plus": 0, "pair_any": 0, "total_balls_5": 0}
         for w in all_windows
     }
     win_stats_30 = {
-        w: {"pair_any": 0, "pair_2of2": 0, "top4_any": 0, "top4_2plus": 0, "top4_3plus": 0, "total_balls_4": 0}
+        w: {"top5_2plus": 0, "top5_3plus": 0, "top4_2plus": 0, "pair_any": 0, "total_balls_5": 0}
         for w in all_windows
     }
 
+    # Statystyki dla każdej z 10 par (i, j) w każdym oknie w_val
+    win_best_pair_info = {}
+    win_best_triple_info = {}
+
     for w_val in all_windows:
-        sc_fn = run_engine_v18(w_val, w_val, matrix_bt_steps)
+        sc_fn = run_engine_v20(w_val, w_val, matrix_bt_steps)
         win_scorers[w_val] = sc_fn
         _, df_bg_now, _, _, _, _ = sc_fn(latest_idx)
-        win_live_top4[w_val] = [df_bg_now.iloc[idx] for idx in range(4)]
+        win_live_top5[w_val] = [df_bg_now.iloc[idx] for idx in range(5)]
+
+        pair_combo_stats = {
+            c: {"both_10": 0, "any_10": 0, "balls_10": 0, "both_30": 0, "any_30": 0, "balls_30": 0}
+            for c in all_pair_combos
+        }
+        triple_combo_stats = {
+            c: {"two_plus_10": 0, "three_10": 0, "balls_10": 0, "two_plus_30": 0, "three_30": 0}
+            for c in all_triple_combos
+        }
 
         for step_i, step_t in enumerate(range(latest_idx - 1, latest_idx - 1 - matrix_bt_steps, -1)):
             _, df_bg_step, _, _, _, _ = sc_fn(step_t)
             nxt_s = all_sets[step_t + 1]
 
             step_picks = []
-            for idx_4 in range(4):
-                r_item = df_bg_step.iloc[idx_4]
+            for idx_5 in range(5):
+                r_item = df_bg_step.iloc[idx_5]
                 b_v = int(r_item["Liczba"])
                 m_v = int(r_item["blue_m"])
                 p_v = int(r_item["pos_nr"])
                 is_h = (b_v in nxt_s)
                 step_picks.append({"b": b_v, "m": m_v, "p": p_v, "h": is_h})
 
+            # Zliczanie skuteczności wszystkich 10 par wewnątrz TOP 5
+            for i_c, j_c in all_pair_combos:
+                hi = step_picks[i_c]["h"]
+                hj = step_picks[j_c]["h"]
+                cnt_ij = (1 if hi else 0) + (1 if hj else 0)
+                if cnt_ij == 2:
+                    pair_combo_stats[(i_c, j_c)]["both_30"] += 1
+                if cnt_ij >= 1:
+                    pair_combo_stats[(i_c, j_c)]["any_30"] += 1
+                pair_combo_stats[(i_c, j_c)]["balls_30"] += cnt_ij
+
+                if step_i < recent_rank_steps:
+                    if cnt_ij == 2:
+                        pair_combo_stats[(i_c, j_c)]["both_10"] += 1
+                    if cnt_ij >= 1:
+                        pair_combo_stats[(i_c, j_c)]["any_10"] += 1
+                    pair_combo_stats[(i_c, j_c)]["balls_10"] += cnt_ij
+
+            # Zliczanie skuteczności wszystkich 10 trójek wewnątrz TOP 5
+            for i_c, j_c, k_c in all_triple_combos:
+                cnt_ijk = (1 if step_picks[i_c]["h"] else 0) + (1 if step_picks[j_c]["h"] else 0) + (1 if step_picks[k_c]["h"] else 0)
+                if cnt_ijk >= 2:
+                    triple_combo_stats[(i_c, j_c, k_c)]["two_plus_30"] += 1
+                if cnt_ijk == 3:
+                    triple_combo_stats[(i_c, j_c, k_c)]["three_30"] += 1
+                if step_i < recent_rank_steps:
+                    if cnt_ijk >= 2:
+                        triple_combo_stats[(i_c, j_c, k_c)]["two_plus_10"] += 1
+                    if cnt_ijk == 3:
+                        triple_combo_stats[(i_c, j_c, k_c)]["three_10"] += 1
+                    triple_combo_stats[(i_c, j_c, k_c)]["balls_10"] += cnt_ijk
+
             hits_in_pair = sum(1 for x in step_picks[:2] if x["h"])
-            hits_in_top4 = sum(1 for x in step_picks if x["h"])
+            hits_in_top4 = sum(1 for x in step_picks[:4] if x["h"])
+            hits_in_top5 = sum(1 for x in step_picks if x["h"])
 
             if hits_in_pair >= 1:
                 win_stats_30[w_val]["pair_any"] += 1
-            if hits_in_pair == 2:
-                win_stats_30[w_val]["pair_2of2"] += 1
-            if hits_in_top4 >= 1:
-                win_stats_30[w_val]["top4_any"] += 1
             if hits_in_top4 >= 2:
                 win_stats_30[w_val]["top4_2plus"] += 1
-            if hits_in_top4 >= 3:
-                win_stats_30[w_val]["top4_3plus"] += 1
-            win_stats_30[w_val]["total_balls_4"] += hits_in_top4
+            if hits_in_top5 >= 2:
+                win_stats_30[w_val]["top5_2plus"] += 1
+            if hits_in_top5 >= 3:
+                win_stats_30[w_val]["top5_3plus"] += 1
+            win_stats_30[w_val]["total_balls_5"] += hits_in_top5
 
             if step_i < recent_rank_steps:
                 if hits_in_pair >= 1:
                     win_stats_10[w_val]["pair_any"] += 1
-                if hits_in_pair == 2:
-                    win_stats_10[w_val]["pair_2of2"] += 1
-                if hits_in_top4 >= 1:
-                    win_stats_10[w_val]["top4_any"] += 1
                 if hits_in_top4 >= 2:
                     win_stats_10[w_val]["top4_2plus"] += 1
-                if hits_in_top4 >= 3:
-                    win_stats_10[w_val]["top4_3plus"] += 1
-                win_stats_10[w_val]["total_balls_4"] += hits_in_top4
+                if hits_in_top5 >= 2:
+                    win_stats_10[w_val]["top5_2plus"] += 1
+                if hits_in_top5 >= 3:
+                    win_stats_10[w_val]["top5_3plus"] += 1
+                win_stats_10[w_val]["total_balls_5"] += hits_in_top5
 
             win_history_cells[w_val].append({
                 "picks": step_picks,
                 "hits_pair": hits_in_pair,
-                "hits_4": hits_in_top4
+                "hits_4": hits_in_top4,
+                "hits_5": hits_in_top5
             })
 
+        # Wybieramy najlepszą Parę (i, j) dla danego okna (priorytet: pełne dublety 2 z 2 w 10g i 30g!)
+        best_pair_c = max(
+            all_pair_combos,
+            key=lambda c: (
+                pair_combo_stats[c]["both_10"] * 3 + pair_combo_stats[c]["both_30"],
+                pair_combo_stats[c]["both_10"],
+                pair_combo_stats[c]["any_10"],
+                pair_combo_stats[c]["balls_30"]
+            )
+        )
+        bp_i, bp_j = best_pair_c
+        live_t5 = win_live_top5[w_val]
+        win_best_pair_info[w_val] = {
+            "combo": best_pair_c,
+            "slot_str": f"#{bp_i+1}+#{bp_j+1}",
+            "b1": int(live_t5[bp_i]["Liczba"]),
+            "b2": int(live_t5[bp_j]["Liczba"]),
+            "both_10": pair_combo_stats[best_pair_c]["both_10"],
+            "any_10": pair_combo_stats[best_pair_c]["any_10"],
+            "both_30": pair_combo_stats[best_pair_c]["both_30"],
+            "any_30": pair_combo_stats[best_pair_c]["any_30"],
+        }
+
+        # Wybieramy najlepszą Trójkę (i, j, k) dla danego okna (priorytet: gry z 2+ trafnymi z 3 kul!)
+        best_triple_c = max(
+            all_triple_combos,
+            key=lambda c: (
+                triple_combo_stats[c]["two_plus_10"] * 2 + triple_combo_stats[c]["two_plus_30"],
+                triple_combo_stats[c]["three_10"] + triple_combo_stats[c]["three_30"],
+                triple_combo_stats[c]["balls_10"]
+            )
+        )
+        bt_i, bt_j, bt_k = best_triple_c
+        win_best_triple_info[w_val] = {
+            "combo": best_triple_c,
+            "slot_str": f"#{bt_i+1}+#{bt_j+1}+#{bt_k+1}",
+            "balls": [int(live_t5[bt_i]["Liczba"]), int(live_t5[bt_j]["Liczba"]), int(live_t5[bt_k]["Liczba"])],
+            "two_plus_10": triple_combo_stats[best_triple_c]["two_plus_10"],
+            "two_plus_30": triple_combo_stats[best_triple_c]["two_plus_30"],
+            "three_30": triple_combo_stats[best_triple_c]["three_30"]
+        }
+
     # =====================================================================
-    # WYŁONIENIE 🥇 1. MIEJSCA I 🥈 2. MIEJSCA WG TRAFIEŃ W OSTATNICH 10 LOSOWANIACH!
+    # WYŁONIENIE 🥇 1. MIEJSCA I 🥈 2. MIEJSCA WG TRAFIEŃ 2+ ORAZ NAJLEPSZEJ PARY 2 z 2!
     # =====================================================================
     ranked_windows = sorted(
         all_windows,
         key=lambda w: (
-            win_stats_10[w]["pair_any"] + win_stats_10[w]["top4_2plus"],
-            win_stats_10[w]["total_balls_4"],
-            win_stats_10[w]["pair_any"],
-            win_stats_30[w]["total_balls_4"]
+            win_stats_10[w]["top5_2plus"] + win_best_pair_info[w]["both_10"] * 2,
+            win_stats_10[w]["top5_3plus"],
+            win_stats_10[w]["total_balls_5"],
+            win_stats_30[w]["top5_2plus"]
         ),
         reverse=True
     )
     first_place_win = ranked_windows[0]
     second_place_win = ranked_windows[1]
 
-    # Zliczamy konsensus kul w TOP 4 wszystkich 9 okien naraz
+    # Wybieramy też globalnie najlepszą Parę 2 z 2 ze wszystkich 9 okien!
+    global_best_pair_win = max(
+        all_windows,
+        key=lambda w: (
+            win_best_pair_info[w]["both_10"] * 2 + win_best_pair_info[w]["both_30"],
+            win_best_pair_info[w]["any_10"],
+            win_stats_10[w]["top5_2plus"]
+        )
+    )
+    gbp_info = win_best_pair_info[global_best_pair_win]
+
     consensus_counter = defaultdict(list)
     for w_val in all_windows:
-        for idx_4, r_p in enumerate(win_live_top4[w_val]):
+        for idx_5, r_p in enumerate(win_live_top5[w_val][:4]):
             b_val = int(r_p["Liczba"])
-            consensus_counter[b_val].append(f"O.{w_val}(#{idx_4+1})")
+            consensus_counter[b_val].append(f"O.{w_val}")
 
     sorted_consensus = sorted(consensus_counter.items(), key=lambda x: len(x[1]), reverse=True)
-    consensus_str_list = [f"<b>{b:02d}</b> ({len(w_list)} okien)" for b, w_list in sorted_consensus[:6]]
+    consensus_str_list = [f"<b>{b:02d}</b> ({len(w_list)}/9 okien)" for b, w_list in sorted_consensus[:6]]
     consensus_html = " &nbsp;|&nbsp; ".join(consensus_str_list)
 
     # =====================================================================
-    # PRZYWRÓCONY GŁÓWNY PANEL DO OBSTAWIANIA NA 2, 3 LUB 4 TRAFIENIA + PEŁNE TOP 6 I TOP 8!
+    # GŁÓWNY PANEL GOTOWYCH KUPONÓW (Z NAJLEPSZĄ PARĄ 2 z 2 I NAJLEPSZĄ TRÓJKĄ Z KOMBINACJI TOP 5!)
     # =====================================================================
-    fp_top4 = win_live_top4[first_place_win]
-    sp_top4 = win_live_top4[second_place_win]
+    fp_top5 = win_live_top5[first_place_win]
+    sp_top5 = win_live_top5[second_place_win]
+    fp_pair = win_best_pair_info[first_place_win]
+    fp_triple = win_best_triple_info[first_place_win]
 
-    # Budujemy zestaw rekomendowany (2, 3 i 4 kule) z najlepszego okna + wsparcia wicelidera i konsensusu!
     df_best_win_pred, _, _, _, best_modes_set, _ = win_scorers[first_place_win](latest_idx)
     top6_df_best = df_best_win_pred.head(6)
     top8_df_best = df_best_win_pred.head(8)
 
-    b_pick_1 = int(fp_top4[0]["Liczba"])
-    b_pick_2 = int(fp_top4[1]["Liczba"])
-    b_pick_3 = int(fp_top4[2]["Liczba"])
-    b_pick_4 = int(fp_top4[3]["Liczba"])
+    b_pick_1 = int(fp_top5[0]["Liczba"])
+    b_pick_2 = int(fp_top5[1]["Liczba"])
+    b_pick_3 = int(fp_top5[2]["Liczba"])
+    b_pick_4 = int(fp_top5[3]["Liczba"])
+    b_pick_5 = int(fp_top5[4]["Liczba"])
 
     curr_in_modes = [b for b in all_lists[latest_idx] if b in best_modes_set]
     curr_modes_str = ", ".join(f"{b:02d}" for b in curr_in_modes) if curr_in_modes else "brak"
@@ -1122,8 +1220,8 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         t_cnt = int(r["trans_count"])
         b_cnt = int(r["b_hits_cnt"])
         b_st = int(r["b_steps"])
-        border_col = "#ffd166" if s_nr <= 2 else ("#00e676" if s_nr <= 4 else "#4da6ff")
-        bg_col = "rgba(255, 209, 102, 0.18)" if s_nr <= 2 else ("rgba(0, 230, 118, 0.14)" if s_nr <= 4 else "rgba(77, 166, 255, 0.12)")
+        border_col = "#ffd166" if s_nr <= 3 else ("#00e676" if s_nr <= 5 else "#4da6ff")
+        bg_col = "rgba(255, 209, 102, 0.18)" if s_nr <= 3 else ("rgba(0, 230, 118, 0.14)" if s_nr <= 5 else "rgba(77, 166, 255, 0.12)")
         top6_badges_html += (
             f"<div style='display:inline-flex; align-items:center; gap:7px; padding:5px 11px; margin:3px 5px 3px 0; "
             f"border:2px solid {border_col}; border-radius:8px; background:{bg_col};'>"
@@ -1133,150 +1231,167 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             f"</div>"
         )
 
-    hero_v18_html = (
+    s10_2p_best = win_stats_10[first_place_win]["top5_2plus"]
+    s30_2p_best = win_stats_30[first_place_win]["top5_2plus"]
+
+    hero_v20_html = (
         f"<div style='background: linear-gradient(135deg, rgba(16, 52, 38, 0.97) 0%, rgba(11, 32, 24, 0.99) 100%); "
         f"border: 2.5px solid #ffd166; border-radius: 12px; padding: 15px 18px; margin-bottom: 16px; "
         f"box-shadow: 0 4px 16px rgba(255, 209, 102, 0.22); font-family: sans-serif;'>"
         f"<div style='font-size: 13px; font-weight: bold; color: #ffd166; text-transform: uppercase; margin-bottom: 10px;'>"
-        f"🎯 GOTOWE ZESTAWY DO OBSTAWIANIA NA 2, 3 LUB 4 TRAFIENIA (Po losowaniu #{all_ids[latest_idx]} — godz. {all_times[latest_idx]}):"
+        f"💎 SKANER KOMBINACJI DUBLETÓW (2 z 2) I TRÓJEK WEWNĄTRZ TOP 5 "
+        f"(🥇 Lider: OKNO {first_place_win} — min. 2 trafne w {s10_2p_best}/10 ost. gier [{s10_2p_best*10}%] i w {s30_2p_best}/30 gier!):"
         f"</div>"
-        # Trzy gotowe kafelki kuponów: na 2 trafienia, na 3 trafienia i na 4 trafienia!
         f"<div style='display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px;'>"
-        # 1) Kupon na 2 trafienia (Para)
-        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.50); "
-        f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 7px 14px;'>"
-        f"<span style='font-size: 13px; color: #ffd166; font-weight: 900;'>🎯 NA 2 TRAFIENIA (Para 🥇 Okno {first_place_win}):</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #e63946; padding: 2px 10px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_1:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #e63946; padding: 2px 10px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_2:02d}</span>"
+        # 1) Najlepsza Para 2 z 2 w Okno Lidera (#1)
+        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.55); "
+        f"border: 2.5px solid #ffd166; border-radius: 10px; padding: 7px 14px; box-shadow: 0 0 12px rgba(255, 209, 102, 0.35);'>"
+        f"<span style='font-size: 13px; color: #ffd166; font-weight: 900;'>💎 NAJLEPSZA PARA 2z2 (Okno {first_place_win}, Sloty {fp_pair['slot_str']} — 2/2: {fp_pair['both_30']}x, min.1: {fp_pair['any_10']}/10):</span>"
+        f"<span style='font-size: 25px; font-weight: 900; color: #fff; background: #e63946; padding: 2px 10px; border-radius: 7px; border: 2px solid #ffd166;'>{fp_pair['b1']:02d}</span>"
+        f"<span style='font-size: 25px; font-weight: 900; color: #fff; background: #e63946; padding: 2px 10px; border-radius: 7px; border: 2px solid #ffd166;'>{fp_pair['b2']:02d}</span>"
         f"</div>"
-        # 2) Kupon na 3 trafienia (Trójka)
-        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.50); "
+        # 2) Najlepsza Trójka z kombinacji TOP 5 w Okno Lidera
+        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.55); "
         f"border: 2.5px solid #00e676; border-radius: 10px; padding: 7px 14px;'>"
-        f"<span style='font-size: 13px; color: #00e676; font-weight: 900;'>🔥 NA 3 TRAFIENIA (Złota Trójka):</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{b_pick_1:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{b_pick_2:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{b_pick_3:02d}</span>"
+        f"<span style='font-size: 13px; color: #00e676; font-weight: 900;'>🔥 NAJLEPSZA TRÓJKA (Sloty {fp_triple['slot_str']} — 2+ z 3: {fp_triple['two_plus_30']}x w 30g):</span>"
+        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{fp_triple['balls'][0]:02d}</span>"
+        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{fp_triple['balls'][1]:02d}</span>"
+        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #0077b6; padding: 2px 9px; border-radius: 7px; border: 2px solid #00e676;'>{fp_triple['balls'][2]:02d}</span>"
         f"</div>"
-        # 3) Kupon na 4 trafienia (Czwórka)
-        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.50); "
-        f"border: 2.5px solid #ff9f1c; border-radius: 10px; padding: 7px 14px;'>"
-        f"<span style='font-size: 13px; color: #ff9f1c; font-weight: 900;'>👑 NA 4 TRAFIENIA (Pełna Czwórka):</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_1:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_2:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_3:02d}</span>"
-        f"<span style='font-size: 24px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{b_pick_4:02d}</span>"
+        # 3) Globalny Rekordzista Dubletów 2 z 2 ze wszystkich 9 okien
+        f"<div style='display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.55); "
+        f"border: 2px dashed #ff9f1c; border-radius: 10px; padding: 7px 14px;'>"
+        f"<span style='font-size: 13px; color: #ff9f1c; font-weight: 900;'>👑 REKORD DUBLETÓW 2z2 (Okno {global_best_pair_win}, Sloty {gbp_info['slot_str']} — {gbp_info['both_30']}x pełne 2/2!):</span>"
+        f"<span style='font-size: 23px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{gbp_info['b1']:02d}</span>"
+        f"<span style='font-size: 23px; font-weight: 900; color: #fff; background: #d97706; padding: 2px 9px; border-radius: 7px; border: 2px solid #ffd166;'>{gbp_info['b2']:02d}</span>"
         f"</div>"
         f"</div>"
-        # Wicelider Podium
         f"<div style='font-size: 13px; color: #b9f6ca; margin-bottom: 10px;'>"
-        f"🥈 <b>2. Miejsce Podium (Okno {second_place_win} — {win_stats_10[second_place_win]['pair_any']}/10 w parach, {win_stats_10[second_place_win]['total_balls_4']} kul w TOP 4):</b> "
-        f"Para: <b style='color:#fff; font-size:15px;'>{int(sp_top4[0]['Liczba']):02d}, {int(sp_top4[1]['Liczba']):02d}</b> &nbsp;|&nbsp; "
-        f"Czwórka (TOP 4): <b style='color:#ffd166; font-size:15px;'>{int(sp_top4[0]['Liczba']):02d}, {int(sp_top4[1]['Liczba']):02d}, {int(sp_top4[2]['Liczba']):02d}, {int(sp_top4[3]['Liczba']):02d}</b>"
+        f"🥈 <b>2. Miejsce Podium (Okno {second_place_win} — 2+ trafne w {win_stats_10[second_place_win]['top5_2plus']}/10 ost. gier):</b> "
+        f"Najlepsza Para 2z2 ({win_best_pair_info[second_place_win]['slot_str']}): "
+        f"<b style='color:#ffd166; font-size:15px;'>{win_best_pair_info[second_place_win]['b1']:02d}, {win_best_pair_info[second_place_win]['b2']:02d}</b> &nbsp;|&nbsp; "
+        f"Pełna Piątka (TOP 5): <b style='color:#fff; font-size:15px;'>{int(sp_top5[0]['Liczba']):02d}, {int(sp_top5[1]['Liczba']):02d}, {int(sp_top5[2]['Liczba']):02d}, {int(sp_top5[3]['Liczba']):02d}, {int(sp_top5[4]['Liczba']):02d}</b>"
         f"</div>"
-        # Przywrócony pasek Pełne TOP 6 Aktywnych Liczb (wraz z miejscem #6, gdzie o 21:06 stała trafiona kula 21!)
         f"<div style='margin-bottom: 10px;'>"
         f"<div style='font-size: 12px; color: #e6e6e6; font-weight: bold; margin-bottom: 5px;'>🔥 Pełne TOP 6 Aktywnych Liczb wg łącznej siły Score (#1 – #6 z Okna {first_place_win}):</div>"
         f"<div>{top6_badges_html}</div>"
         f"</div>"
-        # Przywrócony dolny pasek: Najczęstsza + Koszyk TOP 8 + Konsensus 9 okien
         f"<div style='display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px; color: #e6e6e6; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);'>"
         f"<div>⭐ <b>W kolumnie 'Najczęstsza':</b> <span style='font-size:16px; font-weight:900; color:#ffd166;'>{curr_modes_str}</span></div>"
         f"<div>📌 <b>Koszyk TOP 8:</b> <span style='font-size:16px; font-weight:900; color:#00e676;'>{top8_balls_only}</span></div>"
-        f"<div>🔥 <b>Konsensus 9 okien:</b> <span style='color:#ffd166;'>{consensus_html}</span></div>"
+        f"<div>🔥 <b>Pewniaki z 9 okien naraz:</b> <span style='color:#ffd166;'>{consensus_html}</span></div>"
         f"</div>"
         f"</div>"
     )
-    st.markdown(hero_v18_html, unsafe_allow_html=True)
+    st.markdown(hero_v20_html, unsafe_allow_html=True)
 
     # =====================================================================
-    # WIELOKOLUMNOWA TABELA HTML: 9 OKIEN (5-20) — PO 4 LICZBY W KAŻDYM OKNIE + 30 LOSOWAŃ HISTORII!
+    # WIELOKOLUMNOWA TABELA HTML: 9 OKIEN (5-20) + WIERSZ "💎 NAJLEPSZA PARA 2 z 2" DLA KAŻDEGO OKNA!
     # =====================================================================
-    st.subheader("📊 Macierz 9 Okien (5, 6, 7, 8, 9, 10, 12, 15, 20): 4 Liczby w Każdym Oknie (na 2, 3 lub 4 Trafienia) + 30 Gier")
+    st.subheader("📊 Macierz 9 Okien (5, 6, 7, 8, 9, 10, 12, 15, 20): 5 Liczb + Najlepsza Para 2 z 2 + Historia 30 Losowań")
     st.caption(
-        "W każdej kolumnie okna widzisz **4 najsilniejsze liczby**: górny rząd (czerwony/niebieski) to **Główna Para (na 2 trafienia)**, "
-        "a razem z dolnym rzędem tworzą **Trójkę (3 liczby) i Czwórkę (4 liczby)**. "
-        "W historii poniżej każde trafienie świeci na zielono (`🟩`), a z boku widać, ile kul z 4 weszło w danym losowaniu (`2/4`, `3/4`, `4/4`)."
+        "W każdej kolumnie okna dodano wiersz **💎 NAJLEPSZA PARA 2 z 2**, który automatycznie sprawdza wszystkie 10 kombinacji par wewnątrz TOP 5 (`#1+#2`, `#1+#3`, `#3+#4` itd.) "
+        "i wystawia te 2 kule, które najczęściej wchodziły razem jako pełny dublet (`💎2/2`)."
     )
 
     header_cols_html = []
+    best_pair_row_cols_html = []
     live_picks_cols_html = []
     stats_cols_html = []
 
     for w_val in all_windows:
         is_1st = (w_val == first_place_win)
         is_2nd = (w_val == second_place_win)
+        bp_w = win_best_pair_info[w_val]
 
         if is_1st:
             th_style = "background: linear-gradient(180deg, #5c4508 0%, #2b2104 100%); border-top: 3px solid #ffd166; border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166; color: #ffd166;"
             badge_rank = "🥇 1. MIEJSCE<br>"
-            live_bg = "background: rgba(255, 209, 102, 0.20); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166;"
-            stat_bg = "background: rgba(255, 209, 102, 0.14); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166; border-bottom: 2px solid #ffd166;"
+            pair_bg = "background: rgba(255, 209, 102, 0.25); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166; border-bottom: 1px solid #ffd166;"
+            live_bg = "background: rgba(255, 209, 102, 0.16); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166;"
+            stat_bg = "background: rgba(255, 209, 102, 0.12); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166; border-bottom: 2px solid #ffd166;"
         elif is_2nd:
             th_style = "background: linear-gradient(180deg, #0b4f30 0%, #072919 100%); border-top: 3px solid #00e676; border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676; color: #00e676;"
             badge_rank = "🥈 2. MIEJSCE<br>"
-            live_bg = "background: rgba(0, 230, 118, 0.18); border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676;"
-            stat_bg = "background: rgba(0, 230, 118, 0.12); border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676; border-bottom: 2px solid #00e676;"
+            pair_bg = "background: rgba(0, 230, 118, 0.22); border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676; border-bottom: 1px solid #00e676;"
+            live_bg = "background: rgba(0, 230, 118, 0.14); border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676;"
+            stat_bg = "background: rgba(0, 230, 118, 0.10); border-left: 2.5px solid #00e676; border-right: 2.5px solid #00e676; border-bottom: 2px solid #00e676;"
         else:
             th_style = "background-color: #161922; border-right: 1px solid #2d3340; color: #d0d7de;"
             badge_rank = ""
+            pair_bg = "background-color: #1a1e2b; border-right: 1px solid #2d3340; border-bottom: 1px solid #2d3340;"
             live_bg = "background-color: #12151e; border-right: 1px solid #2d3340;"
             stat_bg = "background-color: #161922; border-right: 1px solid #2d3340; border-bottom: 2px solid #333945;"
 
         header_cols_html.append(
-            f"<th style='padding: 6px 4px; text-align: center; font-size: 11px; min-width: 112px; {th_style}'>"
+            f"<th style='padding: 6px 4px; text-align: center; font-size: 11px; min-width: 124px; {th_style}'>"
             f"{badge_rank}<span style='font-size:13px; font-weight:900;'>OKNO {w_val}</span>"
             f"</th>"
         )
 
-        t4_now = win_live_top4[w_val]
-        b1_n, p1_n, m1_n = int(t4_now[0]["Liczba"]), int(t4_now[0]["pos_nr"]), int(t4_now[0]["blue_m"])
-        b2_n, p2_n, m2_n = int(t4_now[1]["Liczba"]), int(t4_now[1]["pos_nr"]), int(t4_now[1]["blue_m"])
-        b3_n, p3_n, m3_n = int(t4_now[2]["Liczba"]), int(t4_now[2]["pos_nr"]), int(t4_now[2]["blue_m"])
-        b4_n, p4_n, m4_n = int(t4_now[3]["Liczba"]), int(t4_now[3]["pos_nr"]), int(t4_now[3]["blue_m"])
+        # Wiersz Najlepszej Pary 2 z 2 wyliczonej z 10 kombinacji wewnątrz TOP 5
+        best_pair_row_cols_html.append(
+            f"<td style='padding: 5px 3px; text-align: center; {pair_bg}'>"
+            f"<div style='font-size:8px; color:#ffd166; font-weight:900; margin-bottom:2px;'>💎 PARA {bp_w['slot_str']} (2z2: {bp_w['both_30']}x):</div>"
+            f"<div style='display:flex; justify-content:center; gap:4px;'>"
+            f"<span style='font-size:15px; font-weight:900; color:#ffffff; background:#d90429; padding:2px 7px; border-radius:5px; border:1.5px solid #ffd166;'>{bp_w['b1']:02d}</span>"
+            f"<span style='font-size:15px; font-weight:900; color:#ffffff; background:#d90429; padding:2px 7px; border-radius:5px; border:1.5px solid #ffd166;'>{bp_w['b2']:02d}</span>"
+            f"</div>"
+            f"<div style='font-size:8px; color:#b9f6ca; margin-top:2px;'>10g: 2/2={bp_w['both_10']}x | 1+={bp_w['any_10']}/10</div>"
+            f"</td>"
+        )
+
+        t5_now = win_live_top5[w_val]
+        b1_n, p1_n, m1_n = int(t5_now[0]["Liczba"]), int(t5_now[0]["pos_nr"]), int(t5_now[0]["blue_m"])
+        b2_n, p2_n, m2_n = int(t5_now[1]["Liczba"]), int(t5_now[1]["pos_nr"]), int(t5_now[1]["blue_m"])
+        b3_n, p3_n, m3_n = int(t5_now[2]["Liczba"]), int(t5_now[2]["pos_nr"]), int(t5_now[2]["blue_m"])
+        b4_n, p4_n, m4_n = int(t5_now[3]["Liczba"]), int(t5_now[3]["pos_nr"]), int(t5_now[3]["blue_m"])
+        b5_n, p5_n, m5_n = int(t5_now[4]["Liczba"]), int(t5_now[4]["pos_nr"]), int(t5_now[4]["blue_m"])
 
         b_border = "#ffd166" if is_1st else ("#00e676" if is_2nd else "#ffffff")
 
         live_picks_cols_html.append(
-            f"<td style='padding: 5px 4px; text-align: center; {live_bg}'>"
-            f"<div style='font-size:8px; color:#ffd166; font-weight:bold; margin-bottom:2px;'>PARA (#1, #2):</div>"
-            f"<div style='display:flex; justify-content:center; gap:3px; margin-bottom:3px;'>"
-            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#e63946; border:1.5px solid {b_border}; border-radius:5px; padding:1px 4px; min-width:40px;'>"
-            f"<span style='font-size:14px; font-weight:900; color:#fff; line-height:15px;'>{b1_n:02d}</span>"
-            f"<span style='font-size:8px; color:#ffe3e3; line-height:9px;'>P{p1_n:02d}|M{m1_n}</span>"
+            f"<td style='padding: 5px 3px; text-align: center; {live_bg}'>"
+            f"<div style='font-size:8px; color:#d0d7de; font-weight:bold; margin-bottom:2px;'>PEŁNE TOP 5 (#1–#5):</div>"
+            f"<div style='display:flex; justify-content:center; gap:2px; margin-bottom:3px;'>"
+            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#e63946; border:1px solid {b_border}; border-radius:4px; padding:1px 3px; min-width:34px;'>"
+            f"<span style='font-size:12px; font-weight:900; color:#fff; line-height:13px;'>{b1_n:02d}</span>"
+            f"<span style='font-size:7px; color:#ffe3e3; line-height:8px;'>#1|P{p1_n:02d}</span>"
             f"</div>"
-            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#0077b6; border:1.5px solid {b_border}; border-radius:5px; padding:1px 4px; min-width:40px;'>"
-            f"<span style='font-size:14px; font-weight:900; color:#fff; line-height:15px;'>{b2_n:02d}</span>"
-            f"<span style='font-size:8px; color:#caf0f8; line-height:9px;'>P{p2_n:02d}|M{m2_n}</span>"
+            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#0077b6; border:1px solid {b_border}; border-radius:4px; padding:1px 3px; min-width:34px;'>"
+            f"<span style='font-size:12px; font-weight:900; color:#fff; line-height:13px;'>{b2_n:02d}</span>"
+            f"<span style='font-size:7px; color:#caf0f8; line-height:8px;'>#2|P{p2_n:02d}</span>"
+            f"</div>"
+            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#0096c7; border:1px solid {b_border}; border-radius:4px; padding:1px 3px; min-width:34px;'>"
+            f"<span style='font-size:12px; font-weight:900; color:#fff; line-height:13px;'>{b3_n:02d}</span>"
+            f"<span style='font-size:7px; color:#caf0f8; line-height:8px;'>#3|P{p3_n:02d}</span>"
             f"</div>"
             f"</div>"
-            f"<div style='font-size:8px; color:#b9f6ca; font-weight:bold; margin-bottom:2px;'>DO 3 / 4 TRAFIEŃ (#3, #4):</div>"
             f"<div style='display:flex; justify-content:center; gap:3px;'>"
-            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#2b3548; border:1px solid #8a94a6; border-radius:5px; padding:1px 4px; min-width:40px;'>"
-            f"<span style='font-size:13px; font-weight:800; color:#ffd166; line-height:14px;'>{b3_n:02d}</span>"
-            f"<span style='font-size:8px; color:#d0d7de; line-height:9px;'>P{p3_n:02d}|M{m3_n}</span>"
+            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#2b3548; border:1px solid #8a94a6; border-radius:4px; padding:1px 4px; min-width:36px;'>"
+            f"<span style='font-size:12px; font-weight:800; color:#ffd166; line-height:13px;'>{b4_n:02d}</span>"
+            f"<span style='font-size:7px; color:#d0d7de; line-height:8px;'>#4|P{p4_n:02d}</span>"
             f"</div>"
-            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#2b3548; border:1px solid #8a94a6; border-radius:5px; padding:1px 4px; min-width:40px;'>"
-            f"<span style='font-size:13px; font-weight:800; color:#00e676; line-height:14px;'>{b4_n:02d}</span>"
-            f"<span style='font-size:8px; color:#d0d7de; line-height:9px;'>P{p4_n:02d}|M{m4_n}</span>"
+            f"<div style='display:inline-flex; flex-direction:column; align-items:center; background:#2b3548; border:1px solid #8a94a6; border-radius:4px; padding:1px 4px; min-width:36px;'>"
+            f"<span style='font-size:12px; font-weight:800; color:#00e676; line-height:13px;'>{b5_n:02d}</span>"
+            f"<span style='font-size:7px; color:#d0d7de; line-height:8px;'>#5|P{p5_n:02d}</span>"
             f"</div>"
             f"</div>"
             f"</td>"
         )
 
-        s10_pair = win_stats_10[w_val]["pair_any"]
-        s10_2plus = win_stats_10[w_val]["top4_2plus"]
-        s10_3plus = win_stats_10[w_val]["top4_3plus"]
-        s10_tot4 = win_stats_10[w_val]["total_balls_4"]
-        s30_2plus = win_stats_30[w_val]["top4_2plus"]
-        s30_tot4 = win_stats_30[w_val]["total_balls_4"]
+        s10_2plus = win_stats_10[w_val]["top5_2plus"]
+        s10_3plus = win_stats_10[w_val]["top5_3plus"]
+        s10_tot5 = win_stats_10[w_val]["total_balls_5"]
+        s30_2plus = win_stats_30[w_val]["top5_2plus"]
+        s30_3plus = win_stats_30[w_val]["top5_3plus"]
         s10_col = "#ffd166" if is_1st else ("#00e676" if is_2nd else "#ffffff")
 
         stats_cols_html.append(
             f"<td style='padding: 4px 3px; text-align: center; font-size: 9px; {stat_bg}'>"
-            f"<div style='font-weight:900; color:{s10_col}; font-size:10px;'>Para (10g): {s10_pair}/10 ({s10_pair*10}%)</div>"
-            f"<div style='color:#00e676; font-weight:bold;'>2+ z 4 (10g): {s10_2plus}x | 3+: {s10_3plus}x</div>"
-            f"<div style='color:#9da3af;'>Kul w 10g: <b>{s10_tot4}x</b></div>"
-            f"<div style='color:#6c7385; margin-top:2px; border-top:1px solid #262a34; padding-top:2px;'>30g: 2+ traf: {s30_2plus}x ({s30_tot4} kul)</div>"
+            f"<div style='font-weight:900; color:{s10_col}; font-size:10px;'>2+ z 5 (10g): {s10_2plus}/10 ({s10_2plus*10}%)</div>"
+            f"<div style='color:#00e676; font-weight:bold;'>3+ (10g): {s10_3plus}x | Kul: {s10_tot5}x</div>"
+            f"<div style='color:#9da3af; margin-top:2px; border-top:1px solid #262a34; padding-top:2px;'>30g: 2+ traf: <b>{s30_2plus}/30 ({s30_2plus/30*100:.0f}%)</b> | 3+: {s30_3plus}x</div>"
             f"</td>"
         )
 
@@ -1290,8 +1405,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             is_1st = (w_val == first_place_win)
             is_2nd = (w_val == second_place_win)
             c_info = win_history_cells[w_val][step_i]
-            picks_4 = c_info["picks"]
-            h_4 = c_info["hits_4"]
+            picks_5 = c_info["picks"]
+            h_5 = c_info["hits_5"]
+            bp_combo = win_best_pair_info[w_val]["combo"]
+            is_bp_hit_both = (picks_5[bp_combo[0]]["h"] and picks_5[bp_combo[1]]["h"])
 
             if is_1st:
                 td_col_style = "background-color: rgba(255, 209, 102, 0.07); border-left: 2.5px solid #ffd166; border-right: 2.5px solid #ffd166;"
@@ -1300,39 +1417,44 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             else:
                 td_col_style = "border-right: 1px solid #232731;"
 
-            if h_4 >= 3:
-                td_col_style += " background-color: rgba(255, 209, 102, 0.25);"
-            elif h_4 == 2:
-                td_col_style += " background-color: rgba(0, 230, 118, 0.18);"
+            if h_5 >= 3:
+                td_col_style += " background-color: rgba(255, 209, 102, 0.28);"
+            elif h_5 == 2:
+                td_col_style += " background-color: rgba(0, 230, 118, 0.20);"
 
             pills_html = []
-            for idx_p, p_item in enumerate(picks_4):
+            for idx_p, p_item in enumerate(picks_5):
                 b_v, h_v = p_item["b"], p_item["h"]
-                is_pair_slot = (idx_p < 2)
+                in_best_pair = (idx_p in bp_combo)
                 if h_v:
-                    border_c = "#ffd166" if is_pair_slot else "#00e676"
+                    border_c = "#ffd166" if in_best_pair else "#00e676"
                     pills_html.append(
                         f"<span style='display:inline-block; padding:1px 4px; margin:1px; border:1.5px solid {border_c}; border-radius:4px; "
-                        f"background:rgba(0, 230, 118, 0.35); color:#ffffff; font-weight:900; font-size:11px;'>"
+                        f"background:rgba(0, 230, 118, 0.38); color:#ffffff; font-weight:900; font-size:11px;'>"
                         f"{b_v:02d}</span>"
                     )
                 else:
-                    txt_c = "#9da3af" if is_pair_slot else "#5c6370"
+                    border_idle = "1px dashed #ffd166" if in_best_pair else "1px solid #252a34"
+                    txt_c = "#d0d7de" if in_best_pair else "#5c6370"
                     pills_html.append(
-                        f"<span style='display:inline-block; padding:1px 3px; margin:1px; border:1px solid #252a34; border-radius:4px; "
+                        f"<span style='display:inline-block; padding:1px 3px; margin:1px; border:{border_idle}; border-radius:4px; "
                         f"background:#13161f; color:{txt_c}; font-size:10px;'>"
                         f"{b_v:02d}</span>"
                     )
 
-            hit_badge = (
-                f"<span style='font-size:9px; font-weight:900; color:#ffd166; margin-left:2px;'>{h_4}/4🔥</span>"
-                if h_4 >= 2
-                else (f"<span style='font-size:9px; color:#00e676; margin-left:2px;'>1/4</span>" if h_4 == 1 else "")
-            )
+            bp_tag = "<span style='font-size:8px; color:#ffd166; font-weight:900;'>💎2/2 </span>" if is_bp_hit_both else ""
+            if h_5 >= 3:
+                hit_badge = f"{bp_tag}<span style='font-size:9px; font-weight:900; color:#ffd166; margin-left:1px;'>{h_5}/5👑</span>"
+            elif h_5 == 2:
+                hit_badge = f"{bp_tag}<span style='font-size:9px; font-weight:900; color:#00e676; margin-left:1px;'>2/5🔥</span>"
+            elif h_5 == 1:
+                hit_badge = "<span style='font-size:8px; color:#8a94a6; margin-left:2px;'>1/5</span>"
+            else:
+                hit_badge = ""
 
             row_cells.append(
                 f"<td style='padding: 3px 2px; text-align: center; white-space: nowrap; {td_col_style}'>"
-                f"{''.join(pills_html[:2])}<br>{''.join(pills_html[2:])}{hit_badge}"
+                f"{''.join(pills_html[:3])}<br>{''.join(pills_html[3:])}{hit_badge}"
                 f"</td>"
             )
 
@@ -1354,7 +1476,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         <meta charset="utf-8">
         <style>
             body {{ margin: 0; padding: 0; background-color: #0e1117; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-            .matrix-wrap {{ max-height: 780px; overflow-y: auto; overflow-x: auto; border: 1.5px solid #333945; border-radius: 10px; }}
+            .matrix-wrap {{ max-height: 820px; overflow-y: auto; overflow-x: auto; border: 1.5px solid #333945; border-radius: 10px; }}
             table {{ width: 100%; border-collapse: collapse; }}
             thead {{ position: sticky; top: 0; z-index: 20; }}
         </style>
@@ -1365,19 +1487,25 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 <thead>
                     <tr>
                         <th style="padding: 6px 8px; text-align: left; background-color: #161922; color: #ffd166; font-size: 11px; position: sticky; left: 0; z-index: 25; border-right: 2px solid #333945;">
-                            OKNO ANALIZY ➔<br><span style="font-size:9px; color:#9da3af;">(Podium z ost. 10 gier)</span>
+                            OKNO ANALIZY ➔<br><span style="font-size:9px; color:#9da3af;">(Wg gier 2+ trafnych)</span>
                         </th>
                         {''.join(header_cols_html)}
                     </tr>
                     <tr>
+                        <th style="padding: 5px 8px; text-align: left; background-color: #1a1e2b; color: #ffd166; font-size: 11px; position: sticky; left: 0; z-index: 25; border-right: 2px solid #333945;">
+                            💎 NAJLEPSZA PARA 2z2<br><span style="font-size:9px; color:#b9f6ca;">(Z 10 kombinacji TOP 5)</span>
+                        </th>
+                        {''.join(best_pair_row_cols_html)}
+                    </tr>
+                    <tr>
                         <th style="padding: 6px 8px; text-align: left; background-color: #12151e; color: #00e676; font-size: 11px; position: sticky; left: 0; z-index: 25; border-right: 2px solid #333945;">
-                            🎯 4 LOKATY NA TERAZ<br><span style="font-size:9px; color:#b9f6ca;">Góra: Para | Dół: #3, #4</span>
+                            🎯 PEŁNE TOP 5 TERAZ<br><span style="font-size:9px; color:#b9f6ca;">Góra: #1-#3 | Dół: #4-#5</span>
                         </th>
                         {''.join(live_picks_cols_html)}
                     </tr>
                     <tr>
                         <th style="padding: 5px 8px; text-align: left; background-color: #161922; color: #e6e6e6; font-size: 10px; position: sticky; left: 0; z-index: 25; border-right: 2px solid #333945; border-bottom: 2px solid #333945;">
-                            📈 TRAFIENIA (2x/3x/4x)<br><span style="font-size:9px; color:#9da3af;">Ost. 10 vs Ost. 30</span>
+                            📈 DUBLETY (2+) i TRÓJKI (3+)<br><span style="font-size:9px; color:#9da3af;">Ost. 10 vs Ost. 30</span>
                         </th>
                         {''.join(stats_cols_html)}
                     </tr>
@@ -1390,10 +1518,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     </body>
     </html>
     """
-    components.html(multi_win_matrix_html, height=800, scrolling=False)
+    components.html(multi_win_matrix_html, height=840, scrolling=False)
 
     # =====================================================================
-    # SZCZEGÓŁOWY RANKING 20 LICZB ORAZ PRZYWRÓCONE TABELE A, B i C (DLA WYBRANEGO OKNA)
+    # SZCZEGÓŁOWY RANKING 20 LICZB ORAZ TABELE A, B i C (DLA WYBRANEGO OKNA)
     # =====================================================================
     st.divider()
     st.subheader(f"🔍 Szczegółowy Rozbiór Wybranego Okna (Domyślnie 🥇 1. Miejsce = Okno {first_place_win})")
@@ -1405,7 +1533,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             options=all_windows,
             index=all_windows.index(first_place_win),
             horizontal=True,
-            key="v18_detail_win_radio"
+            key="v20_detail_win_radio"
         )
     with col_s2:
         detail_bt = st.radio(
@@ -1413,7 +1541,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             options=[10, 15, 20, 30],
             index=0,
             horizontal=True,
-            key="v18_detail_bt_radio"
+            key="v20_detail_bt_radio"
         )
 
     active_scorer = win_scorers[detail_win]
@@ -1435,7 +1563,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "Pozycja": st.column_config.TextColumn("Poz. (🟦 Miejsce)", width="medium"),
                 "Liczba": st.column_config.NumberColumn("Kula", width="small"),
                 "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-                "Status V18": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
+                "Status V20": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
                 "⬜ Własne Poz. (i z 15)": st.column_config.TextColumn(f"⬜ Własne ({detail_win} i 15)", width="medium"),
                 "🟦 Kolumna M (i Stałe)": st.column_config.TextColumn(f"🟦 Kolumna M ({detail_win})", width="medium"),
                 "Pod pozycją (Węzeł)": st.column_config.TextColumn("Pod pozycją", width="medium"),
@@ -1445,7 +1573,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             hide_index=True,
             use_container_width=True,
             height=520,
-            key="pred_main_ranking_tbl_v18"
+            key="pred_main_ranking_tbl_v20"
         )
 
     with col_hot_all:
@@ -1477,12 +1605,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             hide_index=True,
             use_container_width=True,
             height=520,
-            key="hot_70_check_tbl_v18"
+            key="hot_70_check_tbl_v20"
         )
 
-    # =====================================================================
-    # PRZYWRÓCONE TABELE A, B i C DLA WYBRANEGO OKNA (detail_win) I ZAKRESU (detail_bt)
-    # =====================================================================
     bt_html_rows = []
     total_top5_hits = 0
     total_top8_hits = 0
@@ -1500,10 +1625,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         top5_nums = top5_df["Liczba"].tolist()
         top8_nums = top8_df["Liczba"].tolist()
 
-        g1_ball = int(df_step_bg.iloc[0]["Liczba"])
-        g2_ball = int(df_step_bg.iloc[1]["Liczba"])
-        g1_m = int(df_step_bg.iloc[0]["blue_m"])
-        g2_m = int(df_step_bg.iloc[1]["blue_m"])
+        bp_c_det = win_best_pair_info[detail_win]["combo"]
+        g1_ball = int(df_step_bg.iloc[bp_c_det[0]]["Liczba"])
+        g2_ball = int(df_step_bg.iloc[bp_c_det[1]]["Liczba"])
+        g1_m = int(df_step_bg.iloc[bp_c_det[0]]["blue_m"])
+        g2_m = int(df_step_bg.iloc[bp_c_det[1]]["blue_m"])
         g1_hit = (g1_ball in next_actual_set)
         g2_hit = (g2_ball in next_actual_set)
 
@@ -1576,13 +1702,13 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             "Skuteczność %": round(s_pct, 1),
             "Aktualna Kula (Teraz w grze)": int(curr_row_s["Liczba"]),
             "Własne ⬜ i Niebieska 🟦": f"Poz.{int(curr_row_s['pos_nr']):02d} ({int(curr_row_s['pos_white_hits'])}/{int(curr_row_s['trans_count'])}⬜ | 🟦M.{int(curr_row_s['blue_m']):02d}: {int(curr_row_s['b_hits_cnt'])}/{int(curr_row_s['b_steps'])})",
-            "Status Weryfikacji": curr_row_s["Status V18"]
+            "Status Weryfikacji": curr_row_s["Status V20"]
         })
 
     df_slot_sum = pd.DataFrame(slot_summary_rows).sort_values(
         by="raw_hits", ascending=False, kind="mergesort"
     ).drop(columns=["raw_hits"])
-    st.dataframe(df_slot_sum, hide_index=True, use_container_width=True, key="top5_slots_summary_tbl_v18")
+    st.dataframe(df_slot_sum, hide_index=True, use_container_width=True, key="top5_slots_summary_tbl_v20")
 
     st.markdown(f"#### 📊 B. Skuteczność oryginalnych Pozycji Keno (Poz. 01 – Poz. 20), gdy wejdą do TOP 5 (ostatnie {detail_bt} gier)")
     kpos_summary_rows = []
@@ -1607,9 +1733,9 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     df_kpos_sum = pd.DataFrame(kpos_summary_rows).sort_values(
         by=["raw_hits", "raw_pct"], ascending=[False, False], kind="mergesort"
     ).drop(columns=["raw_hits", "raw_pct"])
-    st.dataframe(df_kpos_sum, hide_index=True, use_container_width=True, height=340, key="top5_kenopos_summary_tbl_v18")
+    st.dataframe(df_kpos_sum, hide_index=True, use_container_width=True, height=340, key="top5_kenopos_summary_tbl_v20")
 
-    st.markdown(f"#### 📋 C. Szczegółowa historia TOP 5 i TOP 8 dla Okna {detail_win} (ostatnie {detail_bt} losowań)")
+    st.markdown(f"#### 📋 C. Szczegółowa historia TOP 5 i Najlepszej Pary ({win_best_pair_info[detail_win]['slot_str']}) dla Okna {detail_win} (ostatnie {detail_bt} losowań)")
     bt_matrix_html = f"""
     <!DOCTYPE html>
     <html>
@@ -1630,7 +1756,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     <tr>
                         <th style="text-align:left;">Z losowania</th>
                         <th style="text-align:left; border-right:2px solid #333945;">Do (T+1)</th>
-                        <th style="border-right:2px solid #333945; color:#00aaff;">🏆 Para Złotych Lokat</th>
+                        <th style="border-right:2px solid #333945; color:#00aaff;">💎 Para ({win_best_pair_info[detail_win]['slot_str']})</th>
                         <th style="color:#ffd166;">Typ #1<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[1]}/{detail_bt})</span></th>
                         <th style="color:#ffd166;">Typ #2<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[2]}/{detail_bt})</span></th>
                         <th style="color:#ffd166;">Typ #3<br><span style="font-size:9px; color:#8a94a6;">({top5_slot_hits[3]}/{detail_bt})</span></th>
@@ -1650,5 +1776,5 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     """
     components.html(bt_matrix_html, height=600, scrolling=False)
 
-# Wywołanie modułu V18:
-render_prediction_algorithm(df, default_window=8, default_blue_win=8, default_backtest=10)
+# Wywołanie modułu V20:
+render_prediction_algorithm(df, default_window=9, default_blue_win=9, default_backtest=10)
