@@ -575,14 +575,14 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V24:
-# 1) PRIORYTET ŻYWEGO KWADRATU ⬜/🟦 W T-1 (+22-26 PKT) — PROMUJE 32, 18, 46 NAD ZIMNE 63 I 42!
-# 2) BLOKADA DOMINUJĄCEGO LIDERA (🔒#1): GDY TYP #1 MA >=80 PKT (LUB +10 PKT PRZEWAGI) I KWADRAT W T-1,
-#    NIE MOŻE ZOSTAĆ POMINIĘTY PRZEZ PARĘ SLOTÓW (DZIĘKI TEMU 32 Z 93 PKT ZAWSZE GRA W PARZE GŁÓWNEJ!)
-# 3) BRAK KARY DLA ŚWIEŻYCH KUL NA AKTYWNYCH POZYCJACH (46) + OCHRONA GORĄCYCH POWTÓREK >=3x (11)
-# 4) ZACHOWANA W 100% IDENTYCZNA, CZYTELNA GRAFIKA Z WERSJI V23
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V25 + META-SELEKTOR (32 MODELE: 8 OKIEN x 4 ZAKRESY BADANIA):
+# 1) NOWY MODUŁ META-SELEKTORA: ŁĄCZY WSZYSTKIE 8 OKIEN (5,6,7,8,9,10,12,15) ORAZ 4 DŁUGOŚCI
+#    BADANYCH LOSOWAŃ (10, 15, 20, 30) W JEDEN SUPER-RANKING + PEŁNA WERYFIKACJA HISTORYCZNA
+# 2) NAPRAWA BŁĘDU KULI 37 (LIDERZY TAB.🟦 >=45% JAK M.01: 53% I M.12: 53% BEZ KARY ZA PRZERWĘ T-1!)
+# 3) BLOKADA 🔒#1 NIE WŁĄCZA SIĘ NA SŁABYCH KOLUMNACH M (<=25% JAK M.06: 20% DLA KULI 01!)
+# 4) ZACHOWANA IDENTYCZNA, CZYTELNA GRAFIKA + 10x SZYBSZY SILNIK (BEZ PANDAS W PĘTLI)
 # =====================================================================
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import combinations
 from datetime import datetime, timedelta
 
@@ -590,11 +590,13 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     st.divider()
 
     all_windows = [5, 6, 7, 8, 9, 10, 12, 15]
+    all_bt_horizons = [10, 15, 20, 30]
     matrix_bt_steps = 30
     recent_rank_steps = 10
+    meta_bt_max = 20
 
-    if len(df_full) < 40 + matrix_bt_steps:
-        st.warning(f"Za mało danych w bazie ({len(df_full)}), aby wykonać pełną analizę 30 losowań.")
+    if len(df_full) < 45 + matrix_bt_steps + meta_bt_max:
+        st.warning(f"Za mało danych w bazie ({len(df_full)}), aby wykonać pełną analizę 32 modeli.")
         return
 
     all_lists = df_full["numbers_list"].tolist()
@@ -613,13 +615,13 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     except Exception:
         target_time_str = "T+1 (za 4 min)"
 
-    st.header(f"🧠 Algorytm V24 — Super-Selektor na Losowanie #{target_draw_id} (godz. {target_time_str})")
+    st.header(f"🧠 Algorytm V25 — Meta-Selektor 32 Modeli & Super-Selektor na #{target_draw_id} (godz. {target_time_str})")
 
     # =================================================================
-    # SILNIK V24: PRIORYTET ŻYWEGO KWADRATU ⬜/🟦 W T-1 + OCHRONA POZ.13 (46) I KULI 11
+    # SZYBKI SILNIK V25 (OCHRONA LIDERÓW TAB.🟦 JAK 37 I 30 + KOREKTA SŁABYCH KOLUMN JAK 01)
     # =================================================================
-    def run_engine_v24(w_size, b_lookback, steps_to_test):
-        earliest_needed = max(max(w_size, b_lookback, 15) - 1, total_draws - 1 - steps_to_test - max(b_lookback, 15) - 4)
+    def run_engine_v25(w_size, b_lookback, steps_needed_back):
+        earliest_needed = max(max(w_size, b_lookback, 15) - 1, total_draws - 1 - steps_needed_back - max(b_lookback, 15) - 4)
         local_meta = {}
         min_mode_thr = 3 if w_size >= 12 else 2
 
@@ -636,10 +638,16 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             w15_sets = all_sets[w15_start : t_i + 1]
             n15_trans = max(1, len(w15_lists) - 1)
 
+            b_start = t_i - b_lookback + 1
+            b_lists = all_lists[b_start : t_i + 1]
+            b_sets = all_sets[b_start : t_i + 1]
+            b_trans = max(1, len(b_lists) - 1)
+
             pos_modes = {}
             all_modes_set = set()
             white_hits_w = {}
             white_hits_15 = {}
+            pos_temp_blue = []
 
             for i in range(1, 21):
                 p_idx = i - 1
@@ -647,39 +655,22 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 white_hits_w[i] = rep_w
                 white_hits_15[i] = sum(1 for k in range(n15_trans) if w15_lists[k][p_idx] in w15_sets[k + 1])
 
-                col_vals = [w_lists[k][p_idx] for k in range(len(w_lists))]
-                s_col = pd.Series(col_vals)
-                m_val = int(s_col.mode().iloc[0])
-                m_cnt = int((s_col == m_val).sum())
+                cnts = Counter(w_lists[k][p_idx] for k in range(len(w_lists)))
+                m_cnt = max(cnts.values())
+                m_val = min(k for k, v in cnts.items() if v == m_cnt)
                 pos_modes[i] = (m_val, m_cnt)
                 if m_cnt >= min_mode_thr:
                     all_modes_set.add(m_val)
 
-            b_start = t_i - b_lookback + 1
-            b_lists = all_lists[b_start : t_i + 1]
-            b_sets = all_sets[b_start : t_i + 1]
-            b_trans = max(1, len(b_lists) - 1)
-
-            pos_temp_blue = []
-            for i in range(1, 21):
-                p_idx = i - 1
                 rep_b = sum(1 for k in range(b_trans) if b_lists[k][p_idx] in b_sets[k + 1])
-                pos_temp_blue.append({
-                    "orig_pos": i,
-                    "raw_hits": rep_b,
-                    "ball": curr_l[p_idx]
-                })
+                pos_temp_blue.append((rep_b, i, curr_l[p_idx]))
 
-            df_rank_step = pd.DataFrame(pos_temp_blue).sort_values(
-                by="raw_hits", ascending=False, kind="mergesort"
-            ).reset_index(drop=True)
+            pos_temp_blue.sort(key=lambda x: (-x[0], x[1]))
 
             blue_col_for_orig_pos = {}
             blue_hit_by_col = {}
-            for rank_idx, r_item in df_rank_step.iterrows():
+            for rank_idx, (_, o_pos, b_val) in enumerate(pos_temp_blue):
                 m_col = rank_idx + 1
-                o_pos = int(r_item["orig_pos"])
-                b_val = int(r_item["ball"])
                 blue_col_for_orig_pos[o_pos] = (m_col, white_hits_w[o_pos])
                 blue_hit_by_col[m_col] = (b_val in next_s) if (t_i + 1 < total_draws) else False
 
@@ -693,7 +684,12 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "min_mode_thr": min_mode_thr
             }
 
-        def score_at_t(t_idx):
+        score_cache = {}
+
+        def score_at_t(t_idx, return_df=False):
+            if t_idx in score_cache and not return_df:
+                return score_cache[t_idx]
+
             win_start = t_idx - w_size + 1
             win_lists = all_lists[win_start : t_idx + 1]
             win_sets = all_sets[win_start : t_idx + 1]
@@ -702,7 +698,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             curr_nums = all_lists[t_idx]
             prev_list = all_lists[t_idx - 1] if t_idx >= 1 else []
             prev_set = all_sets[t_idx - 1] if t_idx >= 1 else set()
-            prev2_set = all_sets[t_idx - 2] if t_idx >= 2 else set()
 
             meta_now = local_meta[t_idx]
             blue_col_map_now = meta_now["blue_col_map"]
@@ -714,12 +709,12 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
             max_w15_in_draw = max(white_hits_15_now.values()) if white_hits_15_now else 5
 
-            blue_col_hits = {m: 0 for m in range(1, 21)}
-            blue_col_rec2 = {m: 0 for m in range(1, 21)}
-            blue_col_rec3 = {m: 0 for m in range(1, 21)}
-            orig_pos_hits_bwin = {p: 0 for p in range(1, 21)}
-            orig_pos_rec2 = {p: 0 for p in range(1, 21)}
-            orig_pos_rec3 = {p: 0 for p in range(1, 21)}
+            blue_col_hits = [0] * 21
+            blue_col_rec2 = [0] * 21
+            blue_col_rec3 = [0] * 21
+            orig_pos_hits_bwin = [0] * 21
+            orig_pos_rec2 = [0] * 21
+            orig_pos_rec3 = [0] * 21
             blue_steps_avail = 0
 
             start_b = max(earliest_needed, t_idx - b_lookback)
@@ -740,46 +735,56 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 b_next_set = all_sets[b_t + 1]
                 for p_i in range(20):
                     if b_nums[p_i] in b_next_set:
-                        orig_pos_hits_bwin[p_i + 1] += 1
+                        p_nr_tmp = p_i + 1
+                        orig_pos_hits_bwin[p_nr_tmp] += 1
                         if is_r2:
-                            orig_pos_rec2[p_i + 1] += 1
+                            orig_pos_rec2[p_nr_tmp] += 1
                         if is_r3:
-                            orig_pos_rec3[p_i + 1] += 1
+                            orig_pos_rec3[p_nr_tmp] += 1
 
             prev1_blue_hits = local_meta[t_idx - 1]["blue_hit_by_col"] if (t_idx - 1) in local_meta else {}
+            prev2_blue_hits = local_meta[t_idx - 2]["blue_hit_by_col"] if (t_idx - 2) in local_meta else {}
 
             w15_start_idx = max(0, t_idx - 14)
             w15_lists_slice = all_lists[w15_start_idx : t_idx + 1]
             w15_sets_slice = all_sets[w15_start_idx : t_idx + 1]
 
-            win_ball_freq = {b: 0 for b in range(1, 71)}
-            win_ball_t1_repeats = {b: 0 for b in range(1, 71)}
+            win_ball_freq = [0] * 71
+            win_ball_t1_repeats = [0] * 71
             for k_idx, d_list in enumerate(win_lists):
+                nxt_w_s = win_sets[k_idx + 1] if k_idx < trans_count else None
                 for b in d_list:
                     win_ball_freq[b] += 1
-                    if k_idx < trans_count and b in win_sets[k_idx + 1]:
+                    if nxt_w_s is not None and b in nxt_w_s:
                         win_ball_t1_repeats[b] += 1
 
-            ball_15_freq = {b: 0 for b in range(1, 71)}
-            ball_15_t1_repeats = {b: 0 for b in range(1, 71)}
+            ball_15_freq = [0] * 71
+            ball_15_t1_repeats = [0] * 71
+            w15_last_k = len(w15_lists_slice) - 1
             for k_idx, d15_l in enumerate(w15_lists_slice):
+                nxt_15_s = w15_sets_slice[k_idx + 1] if k_idx < w15_last_k else None
                 for b in d15_l:
                     ball_15_freq[b] += 1
-                    if k_idx < len(w15_lists_slice) - 1 and b in w15_sets_slice[k_idx + 1]:
+                    if nxt_15_s is not None and b in nxt_15_s:
                         ball_15_t1_repeats[b] += 1
 
-            sq_1_ago = {p: False for p in range(1, 21)}
-            sq_2_ago = {p: False for p in range(1, 21)}
+            sq_1_ago = [False] * 21
+            sq_2_ago = [False] * 21
             if t_idx >= 1:
+                curr_s_now = all_sets[t_idx]
+                prev_l_1 = all_lists[t_idx - 1]
                 for p_i in range(20):
-                    if all_lists[t_idx - 1][p_i] in all_sets[t_idx]:
+                    if prev_l_1[p_i] in curr_s_now:
                         sq_1_ago[p_i + 1] = True
             if t_idx >= 2:
+                prev_s_1 = all_sets[t_idx - 1]
+                prev_l_2 = all_lists[t_idx - 2]
                 for p_i in range(20):
-                    if all_lists[t_idx - 2][p_i] in all_sets[t_idx - 1]:
+                    if prev_l_2[p_i] in prev_s_1:
                         sq_2_ago[p_i + 1] = True
 
             min_strong_white_hits = max(2, int(round(trans_count * 0.30)))
+            denom_b = max(1, blue_steps_avail)
 
             candidates = []
             for p_i in range(20):
@@ -788,7 +793,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
                 m_col, pos_white_hits = blue_col_map_now[pos_nr]
                 b_hits_cnt = blue_col_hits[m_col]
-                b_hit_rate = b_hits_cnt / max(1, blue_steps_avail)
+                b_hit_rate = b_hits_cnt / denom_b
                 b_r2 = blue_col_rec2[m_col]
                 b_r3 = blue_col_rec3[m_col]
 
@@ -796,7 +801,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 w15_hits = white_hits_15_now[pos_nr]
 
                 orig_bwin_cnt = orig_pos_hits_bwin[pos_nr]
-                orig_bwin_rate = orig_bwin_cnt / max(1, blue_steps_avail)
+                orig_bwin_rate = orig_bwin_cnt / denom_b
                 o_r2 = orig_pos_rec2[pos_nr]
                 o_r3 = orig_pos_rec3[pos_nr]
 
@@ -805,9 +810,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
                 sq_d1 = sq_1_ago[pos_nr]
                 sq_d2 = sq_2_ago[pos_nr]
-                sq_n1 = sq_1_ago.get(pos_nr - 1, False) or sq_1_ago.get(pos_nr + 1, False)
+                sq_n1 = (pos_nr > 1 and sq_1_ago[pos_nr - 1]) or (pos_nr < 20 and sq_1_ago[pos_nr + 1])
 
                 b_u1 = prev1_blue_hits.get(m_col, False)
+                b_u2 = prev2_blue_hits.get(m_col, False)
                 b_adj1 = prev1_blue_hits.get(m_col - 1, False) or prev1_blue_hits.get(m_col + 1, False)
 
                 ball_freq_in_win = win_ball_freq[ball]
@@ -816,10 +822,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 ball_t1_15 = ball_15_t1_repeats[ball]
                 ball_f_15 = ball_15_freq[ball]
 
-                # Transfer serii tylko z bliskiej pozycji (+/- 1) i TYLKO gdy kolumna docelowa nie jest uśpiona,
-                # oraz kula ma powtórki T+1 (koniec z faworyzowaniem 42 na martwej Poz.12 nad 46 na Poz.13!)
                 source_pos = None
-                source_white_hits = 0
                 is_transfer_from_strong_pos = False
                 if in_prev1 and prev_list:
                     source_pos = prev_list.index(ball) + 1
@@ -835,38 +838,39 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
 
                 has_direct_t1_square = (sq_d1 or b_u1)
                 is_top_w15_leader = (w15_hits >= max(4, max_w15_in_draw - 1))
+                # NOWOŚĆ V25: Ochrona Lidera Tabeli Niebieskiej (>=45% trafień, jak M.01=53% -> 37 i M.12=53% -> 30!)
+                is_blue_table_leader = (b_hit_rate >= 0.44 and b_r3 >= 1)
                 is_sweet_spot_ball = (0.33 <= ball_freq_rate <= 0.58 and (ball_t1_in_win >= 2 or ball_t1_15 >= 2))
-                # Ochrona dla gorących powtarzalnych kul jak 11 (3x powtórki T+1!)
                 is_hot_repeater = (ball_t1_in_win >= 3 or (ball_t1_in_win >= 2 and ball in all_modes_set_now))
                 is_overheated_ball = (ball_freq_rate > 0.65 and ball_t1_in_win <= 1 and not (in_prev1 and sq_d1))
 
                 # =========================================================================
-                # PUNKTACJA V24 (0 - 100 PKT):
-                # 1) ŻYWY KWADRAT W T-1 (⬜/🟦 — główny motor trafień 32, 18, 46!) — do 26 pkt
-                # 2) Siła Pozycji (okno bieżące + Tabela 15) — do 30 pkt
-                # 3) Siła Tabeli Niebieskiej 🟦 + Strefa M.01-M.06 — do 22 pkt
-                # 4) Siła i powtarzalność kuli (ochrona 11 i Złotej Fali) — do 22 pkt
+                # PUNKTACJA V25 (0 - 100 PKT) — ZBALANSOWANA (BEZ PRZEPAŚCI 30 PKT ZA T-1!):
                 # =========================================================================
                 if sq_d1 and b_u1:
-                    pts_node = 26.0
+                    pts_node = 19.5
                     path_str = "⬜+🟦 Podwójny kwadrat w T-1!"
                 elif sq_d1:
-                    pts_node = 22.0
-                    path_str = "⬜ Biały kwadrat pod nią w T-1!"
+                    pts_node = 17.0
+                    path_str = "⬜ Biały kwadrat w T-1!"
                 elif b_u1:
-                    pts_node = 19.0
-                    path_str = "🟦 Niebieski kwadrat pod nią w T-1!"
+                    pts_node = 15.5
+                    path_str = "🟦 Niebieski kwadrat w T-1!"
+                elif is_blue_table_leader and (sq_d2 or b_u2):
+                    # Ratuje 37 (M.01: 8/15 = 53% + kwadrat 49⬜+🟦 w t-2!) oraz 30 (M.12: 8/15 = 53%!)
+                    pts_node = 14.5
+                    path_str = f"🟦👑 Lider M.{m_col:02d} ({b_hits_cnt}/{blue_steps_avail}) + kwadrat w t-2!"
+                elif sq_d2 and b_u2:
+                    pts_node = 12.0
+                    path_str = "⬜+🟦 Podwójny kwadrat w t-2"
                 elif is_transfer_from_strong_pos:
-                    pts_node = 10.0
+                    pts_node = 10.5
                     path_str = f"🔄🔴 Transfer z Poz.{source_pos:02d}"
-                elif sq_d2 and (o_r2 >= 1 or b_r2 >= 1):
-                    pts_node = 7.5
+                elif sq_d2 or b_u2:
+                    pts_node = 9.0
                     path_str = f"Aktywna w t-2 (⬜:{o_r2}x, 🟦:{b_r2}x)"
-                elif o_r2 >= 1 or b_r2 >= 1:
-                    pts_node = 6.0
-                    path_str = f"Aktywna w 2 ost. (⬜:{o_r2}x, 🟦:{b_r2}x)"
                 elif sq_n1 or b_adj1:
-                    pts_node = 3.5
+                    pts_node = 4.0
                     path_str = "Kwadrat tuż obok"
                 else:
                     pts_node = 0.0
@@ -882,52 +886,55 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 w15_rel_ratio = w15_hits / max(1.0, float(max_w15_in_draw))
                 pts_w15_stability = round(min(14.0, w15_rel_ratio * 14.0), 1) if w15_hits >= 3 else round(w15_rel_ratio * 7.0, 1)
 
-                pts_blue_rate = round(min(14.5, (b_hit_rate / 0.50) * 14.5), 1)
-                pts_blue_rank_zone = 4.5 if (m_col <= 6 and (b_hit_rate >= 0.25 or sq_d1)) else (2.0 if (m_col <= 10 and b_hit_rate >= 0.30) else 0.0)
+                # NAPRAWA V25: Realna siła Tabeli Niebieskiej 🟦 (do 26 pkt!) — bez darmowego bonusu dla słabych M<=25%!
+                pts_blue_rate = round(min(19.0, (b_hit_rate / 0.50) * 19.0), 1)
+                pts_blue_leader_bonus = 4.0 if is_blue_table_leader else (2.5 if (m_col <= 6 and b_hit_rate >= 0.30) else 0.0)
                 pts_orig_bwin = round(min(3.0, (orig_bwin_rate / 0.45) * 3.0), 1)
-                score_blue = min(22.0, pts_blue_rate + pts_blue_rank_zone + pts_orig_bwin)
+                score_blue = min(26.0, pts_blue_rate + pts_blue_leader_bonus + pts_orig_bwin)
 
                 mode_on_pos, mode_cnt_on_pos = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_on_pos and mode_cnt_on_pos >= min_thr)
-                pts_mode = 5.5 if is_exact_mode else (3.0 if ball in all_modes_set_now else 0.0)
+                pts_mode = 5.0 if is_exact_mode else (2.5 if ball in all_modes_set_now else 0.0)
                 mode_str = f"🎯 Lider Poz.{pos_nr:02d} (x{mode_cnt_on_pos})" if is_exact_mode else ("⭐ W 'Najczęstszej'" if ball in all_modes_set_now else "-")
 
-                ball_bonus = 6.0 if is_hot_repeater else (4.5 if is_sweet_spot_ball else (-4.0 if is_overheated_ball else 0.0))
-                pts_ball_t1 = min(16.5, max(0.0, (ball_t1_in_win * 3.8) + (ball_t1_15 * 2.0) + ball_bonus))
-                score_ball = round(min(22.0, pts_mode + pts_ball_t1), 1)
+                ball_bonus = 5.0 if is_hot_repeater else (4.0 if is_sweet_spot_ball else (-4.0 if is_overheated_ball else 0.0))
+                pts_ball_t1 = min(14.5, max(0.0, (ball_t1_in_win * 3.5) + (ball_t1_15 * 1.8) + ball_bonus))
+                score_ball = round(min(19.5, pts_mode + pts_ball_t1), 1)
 
-                # Bonus za potwierdzoną serię na własnej pozycji z kwadratem w T-1 (np. 32!)
                 series_bonus = 0.0
                 if in_prev1 and (sq_d1 or exact_same_pos_in_t1) and (ball_t1_in_win >= 2 or ball_t1_15 >= 2):
                     series_bonus = 5.0
                     path_str += " | 👑 Seria"
                 elif in_prev1 and has_direct_t1_square:
-                    series_bonus = 2.5
+                    series_bonus = 2.0
                     path_str += " | 🔴 z T-1"
 
-                # Miękkie kary dla zimnych kolumn bez kwadratu w T-1 (np. 63 na zimnym M.12 i 42 na uśpionej Poz.12!)
+                # Miękkie kary — LIDERZY TABELI NIEBIESKIEJ (>=44%) I TABELI 15 SĄ CHRONIENI!
                 soft_penalty = 0.0
-                if not has_direct_t1_square:
-                    if not is_hot_repeater:
-                        soft_penalty += 6.0  # Chłodzenie pozycji bez żywego kwadratu w T-1
-                    if o_r3 == 0 and b_r3 == 0:
-                        soft_penalty += 12.0
-                    elif o_r2 == 0 and b_r2 == 0 and not is_top_w15_leader:
-                        soft_penalty += 8.0
-                    if b_hit_rate < 0.28 and b_r2 == 0:
-                        soft_penalty += 6.0
-                    # Kara za brak powtórek kuli TYLKO gdy NIE MA kwadratu pod pozycją (chroni świeżą 46 na Poz.13!)
-                    if ball_t1_in_win == 0 and ball_t1_15 == 0:
-                        soft_penalty += 4.5
+                if b_hit_rate <= 0.22 and b_hits_cnt <= 3:
+                    # Chłodzenie słabych kolumn Niebieskich (np. M.06 mające tylko 3/15 = 20% dla kuli 01!)
+                    soft_penalty += 6.5
 
-                if w15_hits <= 1 and n15_trans_now >= 12 and not has_direct_t1_square:
-                    soft_penalty += 12.0
+                if not has_direct_t1_square and not is_blue_table_leader:
+                    if not is_hot_repeater and not is_top_w15_leader:
+                        soft_penalty += 5.0
+                    if o_r3 == 0 and b_r3 == 0:
+                        soft_penalty += 11.0
+                    elif o_r2 == 0 and b_r2 == 0 and not is_top_w15_leader:
+                        soft_penalty += 7.0
+                    if ball_t1_in_win == 0 and ball_t1_15 == 0 and not is_top_w15_leader:
+                        soft_penalty += 4.0
+
+                if w15_hits <= 1 and n15_trans_now >= 12 and not has_direct_t1_square and not is_blue_table_leader:
+                    soft_penalty += 11.0
 
                 raw_score = pts_node + pts_white_pos + pts_w15_stability + score_blue + score_ball + series_bonus - soft_penalty
                 final_score = round(min(99.0, max(5.0, raw_score)), 1)
 
                 if in_prev1 and (sq_d1 or exact_same_pos_in_t1) and (ball_t1_in_win >= 2 or ball_t1_15 >= 2):
                     verdict_str = "👑 POTWIERDZONA SERIA (🔴+⬜)"
+                elif is_blue_table_leader:
+                    verdict_str = f"🟦👑 Lider Tab.🟦 M.{m_col:02d} ({b_hits_cnt}/{blue_steps_avail})"
                 elif sq_d1 and b_u1:
                     verdict_str = "💎 PODWÓJNY KWADRAT (⬜+🟦)"
                 elif sq_d1:
@@ -938,12 +945,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     verdict_str = f"🔥 Gorąca Kula ({ball_t1_in_win}x powt.)"
                 elif is_top_w15_leader:
                     verdict_str = f"🏆 Lider Tabeli 15 ({w15_hits}/{n15_trans_now} ⬜)"
-                elif soft_penalty >= 14.0:
-                    verdict_str = f"❄️ Chłodna Poz.{pos_nr:02d} (brak ⬜ w T-1)"
+                elif soft_penalty >= 12.0:
+                    verdict_str = f"❄️ Chłodna Poz.{pos_nr:02d}"
                 else:
                     verdict_str = "⏳ Aktywna w t-2"
-
-                w_disp_str = f"{pos_white_hits}/{trans_count} ({pos_white_rate*100:.0f}%) | z 15: {w15_hits}/14"
 
                 candidates.append({
                     "pos_nr": pos_nr,
@@ -957,60 +962,464 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                     "b_steps": blue_steps_avail,
                     "b_hit_pct": round(b_hit_rate * 100.0, 1),
                     "has_t1_sq": 1 if has_direct_t1_square else 0,
+                    "is_blue_leader": 1 if is_blue_table_leader else 0,
                     "ball_t1_total": ball_t1_in_win + ball_t1_15,
                     "Pozycja": f"Poz. {pos_nr:02d} (🟦 M.{m_col:02d})",
                     "Liczba": ball,
                     "Score": final_score,
-                    "Status V24": verdict_str,
-                    "⬜ Własne Poz. (i z 15)": w_disp_str,
+                    "Status V25": verdict_str,
+                    "⬜ Własne Poz. (i z 15)": f"{pos_white_hits}/{trans_count} ({pos_white_rate*100:.0f}%) | z 15: {w15_hits}/14",
                     "🟦 Kolumna M (i Stałe)": f"M.{m_col:02d}: {b_hits_cnt}/{blue_steps_avail} | Stałe: {orig_bwin_cnt}/{blue_steps_avail}",
                     "Pod pozycją (Węzeł)": path_str,
                     "Powtórki Kuli T+1": f"{ball_t1_in_win}x (z 15: {ball_t1_15}x na {ball_f_15})",
                     "⭐ 'Najczęstsza'": mode_str
                 })
 
-            df_cand = pd.DataFrame(candidates).sort_values(
-                by=["Score", "has_t1_sq", "w15_hits", "b_hit_pct"],
-                ascending=[False, False, False, False],
-                kind="mergesort"
-            ).reset_index(drop=True)
+            candidates.sort(key=lambda x: (-x["Score"], -x["b_hit_pct"], -x["has_t1_sq"], -x["w15_hits"]))
+            for idx_c, c_item in enumerate(candidates):
+                c_item["Rank"] = f"#{idx_c+1}"
 
-            df_cand.insert(0, "Rank", [f"#{i+1}" for i in range(len(df_cand))])
-            return df_cand, win_ball_freq, win_ball_t1_repeats, all_modes_set_now, min_thr
+            res_tuple = (candidates, win_ball_freq, win_ball_t1_repeats, all_modes_set_now, min_thr)
+            score_cache[t_idx] = res_tuple
+
+            if return_df:
+                df_c = pd.DataFrame(candidates)
+                cols_order = ["Rank"] + [col for col in df_c.columns if col != "Rank"]
+                return df_c[cols_order], win_ball_freq, win_ball_t1_repeats, all_modes_set_now, min_thr
+            return res_tuple
 
         return score_at_t
 
     # =====================================================================
-    # FUNKCJA BLOKADY DOMINUJĄCEGO LIDERA (🔒#1) — IDENTYCZNA W BACKTEŚCIE I NA ŻYWO!
-    # Jeśli Typ #1 ma >=80 pkt (lub +10 pkt przewagi nad #2) i żywy kwadrat w T-1,
-    # to ZAWSZE wchodzi do 2 Głównych Liczb (koniec z pomijaniem kuli 32 mającej 93 pkt!)
+    # BLOKADA DOMINUJĄCEGO LIDERA (🔒#1) — WYMAGA TERAZ MOCNEJ KOLUMNY 🟦 (>=30%!)
+    # (Koniec z wymuszaniem kuli 01 stojącej na słabym M.06 = 20%!)
     # =====================================================================
-    def resolve_pair_with_leader_lock(top5_df, base_s1, base_s2):
-        r0 = top5_df.iloc[0]
-        r1 = top5_df.iloc[1]
+    def resolve_pair_with_leader_lock(top5_list, base_s1, base_s2):
+        r0 = top5_list[0]
+        r1 = top5_list[1]
         s0 = float(r0["Score"])
         s1_val = float(r1["Score"])
-        is_dominant_leader = (int(r0["has_t1_sq"]) == 1) and (s0 >= 80.0 or (s0 - s1_val) >= 10.0)
-        if is_dominant_leader and 0 not in (base_s1, base_s2):
+        strong_blue_ok = (float(r0["b_hit_pct"]) >= 30.0)
+        strong_signal = (int(r0["has_t1_sq"]) == 1 or int(r0["is_blue_leader"]) == 1)
+        is_dominant = strong_blue_ok and strong_signal and (s0 >= 78.0 or (s0 - s1_val) >= 10.0)
+        if is_dominant and 0 not in (base_s1, base_s2):
             return 0, base_s1, True
         return base_s1, base_s2, False
 
     # =====================================================================
-    # SKANER OKIEN (5–15) Z OCHRONĄ ANTY-OVERFITTING (55% STABILNOŚĆ 30g + 45% FORMA 10g)
+    # PREKALKULACJA WSZYSTKICH 8 OKIEN (5–15) NA 50 LOSOWAŃ WSTECZ (DLA META-SELEKTORA 32 MODELI!)
     # =====================================================================
     all_pair_combos = list(combinations(range(5), 2))
+    total_precomp_steps = matrix_bt_steps + meta_bt_max + 2
     win_scorers = {}
+    win_top5_cache = {w: {} for w in all_windows}
+    win_hits_cache = {w: {} for w in all_windows}
+    win_lock_cache = {w: {} for w in all_windows}
+
+    for w_val in all_windows:
+        sc_fn = run_engine_v25(w_val, w_val, total_precomp_steps)
+        win_scorers[w_val] = sc_fn
+        start_pre = latest_idx - (matrix_bt_steps + meta_bt_max)
+        for t_s in range(start_pre, latest_idx + 1):
+            cands_t, _, _, _, _ = sc_fn(t_s, return_df=False)
+            t5_t = cands_t[:5]
+            win_top5_cache[w_val][t_s] = t5_t
+            if t_s < latest_idx:
+                nxt_s = all_sets[t_s + 1]
+                win_hits_cache[w_val][t_s] = [t5_t[k]["Liczba"] in nxt_s for k in range(5)]
+            # Pre-cache dominant lock flag for speed
+            r0, r1 = t5_t[0], t5_t[1]
+            win_lock_cache[w_val][t_s] = (
+                float(r0["b_hit_pct"]) >= 30.0
+                and (int(r0["has_t1_sq"]) == 1 or int(r0["is_blue_leader"]) == 1)
+                and (float(r0["Score"]) >= 78.0 or (float(r0["Score"]) - float(r1["Score"])) >= 10.0)
+            )
+
+    # =====================================================================
+    # NOWY MODUŁ: 🌐 META-SELEKTOR 32 MODELI (8 OKIEN [5–15] × 4 ZAKRESY BADANIA [10, 15, 20, 30])
+    # =====================================================================
+    def compute_meta_prediction_at_t(t_eval):
+        ball_meta_points = defaultdict(float)
+        ball_model_votes = defaultdict(int)
+        ball_windows_set = defaultdict(set)
+        ball_horizons_set = defaultdict(set)
+        ball_best_pos = {}
+        horizon_best_model = {}
+
+        for h_len in all_bt_horizons:
+            best_h_power = -1.0
+            best_h_rec = None
+
+            for w_val in all_windows:
+                slot_h = [0, 0, 0, 0, 0]
+                pair_any = {c: 0 for c in all_pair_combos}
+                pair_both = {c: 0 for c in all_pair_combos}
+                pair_rec4 = {c: 0 for c in all_pair_combos}
+
+                for off in range(1, h_len + 1):
+                    t_past = t_eval - off
+                    h_fl = win_hits_cache[w_val][t_past]
+                    is_dom_past = win_lock_cache[w_val][t_past]
+                    for s_i in range(5):
+                        if h_fl[s_i]:
+                            slot_h[s_i] += 1
+                    is_r4 = (off <= 4)
+                    for c in all_pair_combos:
+                        ic, jc = c
+                        if is_dom_past and 0 not in c:
+                            ei, ej = 0, ic
+                        else:
+                            ei, ej = ic, jc
+                        ch = (1 if h_fl[ei] else 0) + (1 if h_fl[ej] else 0)
+                        if ch >= 1:
+                            pair_any[c] += 1
+                            if is_r4:
+                                pair_rec4[c] += 1
+                        if ch == 2:
+                            pair_both[c] += 1
+
+                # Wybór najlepszej pary dla modelu (w_val, h_len)
+                best_c = max(
+                    all_pair_combos,
+                    key=lambda c: (
+                        (pair_any[c] / h_len) * 50.0
+                        + (pair_both[c] / h_len) * 65.0
+                        + (pair_rec4[c] / 4.0) * 20.0
+                        + ((slot_h[c[0]] + slot_h[c[1]]) / (2.0 * h_len)) * 25.0
+                    )
+                )
+                c1, c2 = best_c
+                if slot_h[c2] > slot_h[c1]:
+                    bs1, bs2 = c2, c1
+                else:
+                    bs1, bs2 = c1, c2
+
+                t5_now = win_top5_cache[w_val][t_eval]
+                is_dom_now = win_lock_cache[w_val][t_eval]
+                if is_dom_now and 0 not in (bs1, bs2):
+                    as1, as2 = 0, bs1
+                else:
+                    as1, as2 = bs1, bs2
+
+                rem_s = [s for s in range(5) if s not in (as1, as2)]
+                as3 = max(rem_s, key=lambda s: (slot_h[s], float(t5_now[s]["Score"])))
+
+                p_any_rate = pair_any[best_c] / h_len
+                p_both_rate = pair_both[best_c] / h_len
+                model_quality = (p_any_rate * 50.0) + (p_both_rate * 65.0) + (pair_rec4[best_c] / 4.0) * 18.0
+                # Wyższa waga dla modeli o wyższej trafności (minimum 0.35, żeby słabe modele nie zagłuszały)
+                m_weight = max(0.35, model_quality / 45.0)
+
+                b1 = int(t5_now[as1]["Liczba"])
+                b2 = int(t5_now[as2]["Liczba"])
+                b3 = int(t5_now[as3]["Liczba"])
+
+                # Głosy modelu (w_val, h_len) na jego 2 Główne Liczby + 3. dodatkową
+                s1_rate = slot_h[as1] / h_len
+                s2_rate = slot_h[as2] / h_len
+                s3_rate = slot_h[as3] / h_len
+
+                for b_v, slot_r, r_obj, base_mult in [
+                    (b1, s1_rate, t5_now[as1], 1.15),
+                    (b2, s2_rate, t5_now[as2], 1.00),
+                    (b3, s3_rate, t5_now[as3], 0.40),
+                ]:
+                    pts_add = m_weight * base_mult * (1.0 + slot_r * 0.8 + float(r_obj["Score"]) / 150.0)
+                    ball_meta_points[b_v] += pts_add
+                    if base_mult >= 1.0:
+                        ball_model_votes[b_v] += 1
+                        ball_windows_set[b_v].add(w_val)
+                        ball_horizons_set[b_v].add(h_len)
+                    if b_v not in ball_best_pos:
+                        ball_best_pos[b_v] = (int(r_obj["pos_nr"]), int(r_obj["blue_m"]), float(r_obj["Score"]), r_obj["Status V25"])
+
+                if model_quality > best_h_power:
+                    best_h_power = model_quality
+                    best_h_rec = {
+                        "h_len": h_len,
+                        "w_val": w_val,
+                        "any_cnt": pair_any[best_c],
+                        "both_cnt": pair_both[best_c],
+                        "s1": as1, "s2": as2, "s3": as3,
+                        "b1": b1, "b2": b2, "b3": b3
+                    }
+
+            horizon_best_model[h_len] = best_h_rec
+
+        meta_ranked = []
+        for b_v, m_pts in ball_meta_points.items():
+            p_nr, m_col, sc_val, st_txt = ball_best_pos[b_v]
+            meta_ranked.append({
+                "Liczba": b_v,
+                "meta_pts": round(m_pts, 1),
+                "models_cnt": ball_model_votes[b_v],
+                "win_cnt": len(ball_windows_set[b_v]),
+                "hor_cnt": len(ball_horizons_set[b_v]),
+                "windows_list": sorted(list(ball_windows_set[b_v])),
+                "horizons_list": sorted(list(ball_horizons_set[b_v])),
+                "pos_nr": p_nr,
+                "blue_m": m_col,
+                "score_ref": sc_val,
+                "status_ref": st_txt
+            })
+
+        meta_ranked.sort(key=lambda x: (-x["meta_pts"], -x["win_cnt"], -x["models_cnt"], -x["score_ref"]))
+        return meta_ranked, horizon_best_model
+
+    # Obliczamy Meta-Selektor na TERAZ oraz jego pełną weryfikację z ostatnich 20 losowań!
+    live_meta_ranked, live_horizon_best = compute_meta_prediction_at_t(latest_idx)
+
+    meta_hist_rows = []
+    meta_pair_any_20 = 0
+    meta_pair_both_20 = 0
+    meta_top3_2plus_20 = 0
+    meta_top5_2plus_20 = 0
+    meta_pair_any_10 = 0
+    meta_pair_both_10 = 0
+    meta_slot_hits_20 = [0, 0, 0, 0, 0]
+
+    for step_i in range(meta_bt_max):
+        t_step = latest_idx - 1 - step_i
+        m_rank_step, _ = compute_meta_prediction_at_t(t_step)
+        nxt_s = all_sets[t_step + 1]
+        m_top5 = m_rank_step[:5]
+        h_fl = [m_top5[k]["Liczba"] in nxt_s for k in range(5)]
+
+        p_h = (1 if h_fl[0] else 0) + (1 if h_fl[1] else 0)
+        t3_h = sum(1 for f in h_fl[:3] if f)
+        t5_h = sum(1 for f in h_fl if f)
+
+        for k in range(5):
+            if h_fl[k]:
+                meta_slot_hits_20[k] += 1
+
+        if p_h >= 1:
+            meta_pair_any_20 += 1
+            if step_i < 10:
+                meta_pair_any_10 += 1
+        if p_h == 2:
+            meta_pair_both_20 += 1
+            if step_i < 10:
+                meta_pair_both_10 += 1
+        if t3_h >= 2:
+            meta_top3_2plus_20 += 1
+        if t5_h >= 2:
+            meta_top5_2plus_20 += 1
+
+        meta_hist_rows.append({
+            "t_step": t_step,
+            "m_top5": m_top5,
+            "h_fl": h_fl,
+            "p_h": p_h,
+            "t3_h": t3_h,
+            "t5_h": t5_h
+        })
+
+    # =====================================================================
+    # RENDER NOWEGO MODUŁU: 🌐 META-SELEKTOR 32 MODELI (8 OKIEN × 4 ZAKRESY BADANIA)
+    # =====================================================================
+    m1 = live_meta_ranked[0]
+    m2 = live_meta_ranked[1]
+    m3 = live_meta_ranked[2]
+    m4 = live_meta_ranked[3]
+    m5 = live_meta_ranked[4]
+
+    meta_p20_pct = (meta_pair_any_20 / meta_bt_max) * 100.0
+    meta_3rd_strong = (m3["win_cnt"] >= 4 and m3["models_cnt"] >= 10) or (meta_slot_hits_20[2] >= 7)
+
+    meta_3rd_box = (
+        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(0, 230, 118, 0.20); "
+        f"border: 2.5px solid #00e676; border-radius: 10px; padding: 9px 15px;'>"
+        f"<div>"
+        f"<div style='font-size: 13px; color: #00e676; font-weight: 900;'>➕ 3. META-LICZBA (SILNE POPARCIE MODELI!):</div>"
+        f"<div style='font-size: 11px; color: #b9f6ca;'>Wybrana w <b>{m3['models_cnt']}/32</b> modelach ({m3['win_cnt']}/8 okien | {m3['hor_cnt']}/4 zakresy) | Poz.{m3['pos_nr']:02d}</div>"
+        f"</div>"
+        f"<span style='font-size: 28px; font-weight: 900; color: #fff; background: #0077b6; padding: 3px 13px; border-radius: 8px; border: 2px solid #00e676;'>{m3['Liczba']:02d}</span>"
+        f"</div>"
+        if meta_3rd_strong else
+        f"<div style='display: inline-flex; align-items: center; gap: 10px; background: rgba(255, 255, 255, 0.06); "
+        f"border: 1.5px dashed #8a94a6; border-radius: 10px; padding: 9px 15px;'>"
+        f"<div>"
+        f"<div style='font-size: 12px; color: #ffd166; font-weight: 800;'>⚠️ 3. META-LICZBA (REZERWOWA):</div>"
+        f"<div style='font-size: 11px; color: #9da3af;'>Poparcie: {m3['models_cnt']}/32 modeli ({m3['win_cnt']}/8 okien) | Poz.{m3['pos_nr']:02d}</div>"
+        f"</div>"
+        f"<span style='font-size: 24px; font-weight: 800; color: #d0d7de; background: #2b3548; padding: 2px 11px; border-radius: 7px; border: 1px solid #8a94a6;'>{m3['Liczba']:02d}</span>"
+        f"</div>"
+    )
+
+    # Pasek porównania 4 długości badania (10, 15, 20, 30 losowań)
+    hor_pills = []
+    for h_len in all_bt_horizons:
+        hr = live_horizon_best[h_len]
+        hor_pills.append(
+            f"<div style='background:rgba(0,0,0,0.45); border:1px solid #3c4a5e; border-radius:8px; padding:6px 10px; font-size:11px;'>"
+            f"<span style='color:#4da6ff; font-weight:900;'>Badanie {h_len} gier</span> "
+            f"<span style='color:#9da3af;'>(🥇 Okno {hr['w_val']}: {hr['any_cnt']}/{h_len}, 2z2: {hr['both_cnt']}x) ➔</span> "
+            f"<b style='color:#ffd166; font-size:13px;'>{hr['b1']:02d}, {hr['b2']:02d}</b> "
+            f"<span style='color:#00e676;'>+{hr['b3']:02d}</span>"
+            f"</div>"
+        )
+
+    meta_hero_html = (
+        f"<div style='background: linear-gradient(135deg, rgba(16, 36, 64, 0.98) 0%, rgba(11, 22, 42, 0.99) 100%); "
+        f"border: 3px solid #00b4d8; border-radius: 14px; padding: 16px 20px; margin-bottom: 18px; "
+        f"box-shadow: 0 6px 22px rgba(0, 180, 216, 0.25); font-family: sans-serif;'>"
+        f"<div style='display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.55); "
+        f"border:2px solid #00b4d8; border-radius:9px; padding:10px 16px; margin-bottom:14px;'>"
+        f"<div style='font-size:16px; font-weight:900; color:#90e0ef;'>"
+        f"🌐 NOWY MODUŁ: META-SELEKTOR 32 MODELI NA <span style='color:#ffffff; background:#e63946; padding:3px 10px; border-radius:6px; font-size:18px;'>#{target_draw_id} (godz. {target_time_str})</span>"
+        f"</div>"
+        f"<div style='font-size:12px; color:#ffd166; font-weight:bold;'>"
+        f"📊 Skuteczność Meta-Pary (20g): <b>{meta_pair_any_20}/{meta_bt_max} ({meta_p20_pct:.0f}%)</b>, pełne 2z2: <b>{meta_pair_both_20}x</b> | "
+        f"Ost. 10g: <b>{meta_pair_any_10}/10 ({meta_pair_any_10*10}%)</b> | Meta-TOP5 (2+): <b>{meta_top5_2plus_20}/{meta_bt_max}</b>"
+        f"</div>"
+        f"</div>"
+        f"<div style='display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 14px;'>"
+        f"<div style='display: inline-flex; align-items: center; gap: 12px; background: rgba(0, 0, 0, 0.65); "
+        f"border: 3px solid #ffd166; border-radius: 12px; padding: 10px 18px; box-shadow: 0 0 16px rgba(255, 209, 102, 0.4);'>"
+        f"<div>"
+        f"<div style='font-size: 14px; color: #ffd166; font-weight: 900;'>🌐 META-PARA (ZE WSZYSTKICH 8 OKIEN × 4 ZAKRESÓW BADANIA):</div>"
+        f"<div style='font-size: 11px; color: #e6e6e6;'>"
+        f"1. <b>{m1['Liczba']:02d}</b> (Poz.{m1['pos_nr']:02d} | {m1['models_cnt']}/32 modeli, {m1['win_cnt']}/8 okien) &nbsp;|&nbsp; "
+        f"2. <b>{m2['Liczba']:02d}</b> (Poz.{m2['pos_nr']:02d} | {m2['models_cnt']}/32 modeli, {m2['win_cnt']}/8 okien)"
+        f"</div>"
+        f"</div>"
+        f"<span style='font-size: 32px; font-weight: 900; color: #fff; background: #e63946; padding: 3px 15px; border-radius: 9px; border: 2.5px solid #ffd166;'>{m1['Liczba']:02d}</span>"
+        f"<span style='font-size: 32px; font-weight: 900; color: #fff; background: #e63946; padding: 3px 15px; border-radius: 9px; border: 2.5px solid #ffd166;'>{m2['Liczba']:02d}</span>"
+        f"</div>"
+        f"{meta_3rd_box}"
+        f"</div>"
+        f"<div style='font-size: 12px; color: #90e0ef; font-weight: bold; margin-bottom: 6px;'>"
+        f"🔍 Co wskazują poszczególne długości badanych losowań (10, 15, 20, 30 gier) ze wszystkich okien 5–15:"
+        f"</div>"
+        f"<div style='display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;'>{''.join(hor_pills)}</div>"
+        f"<div style='font-size: 13px; color: #e6e6e6; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15);'>"
+        f"🏆 <b>Pełna META-PIĄTKA (TOP 5 z 32 modeli na #{target_draw_id}):</b> "
+        f"<span style='color:#ffd166; font-weight:900; font-size:15px;'>"
+        f"#1: {m1['Liczba']:02d} ({m1['models_cnt']}/32) &nbsp;|&nbsp; #2: {m2['Liczba']:02d} ({m2['models_cnt']}/32) &nbsp;|&nbsp; "
+        f"#3: {m3['Liczba']:02d} ({m3['models_cnt']}/32) &nbsp;|&nbsp; #4: {m4['Liczba']:02d} ({m4['models_cnt']}/32) &nbsp;|&nbsp; #5: {m5['Liczba']:02d} ({m5['models_cnt']}/32)"
+        f"</span>"
+        f"</div>"
+        f"</div>"
+    )
+    st.markdown(meta_hero_html, unsafe_allow_html=True)
+
+    # Tabela historii Meta-Selektora (identyczna czytelność jak Tabela nr 2!)
+    with st.expander(f"📋 Weryfikacja Historii Meta-Selektora 32 Modeli (Ostatnie {meta_bt_max} losowań — Meta-Para: {meta_pair_any_20}/{meta_bt_max} = {meta_p20_pct:.0f}%, pełne 2z2: {meta_pair_both_20}x)", expanded=True):
+        meta_tbl_rows = []
+        # Wiersz 0: aktywne losowanie na górze
+        live_m_cells = []
+        for idx_m, m_it in enumerate(live_meta_ranked[:5]):
+            if idx_m < 2:
+                m_box = (
+                    f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                    f"width:58px; height:38px; border:2.5px solid #ffd166; border-radius:7px; background:#e63946; color:#fff; font-weight:900;'>"
+                    f"<span style='font-size:15px; line-height:15px;'>🎯{m_it['Liczba']:02d}</span>"
+                    f"<span style='font-size:8px; color:#ffd166; line-height:9px;'>{m_it['models_cnt']}/32m</span></div>"
+                )
+            elif idx_m == 2:
+                m_box = (
+                    f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                    f"width:58px; height:38px; border:2px dashed #00e676; border-radius:7px; background:#0077b6; color:#fff; font-weight:bold;'>"
+                    f"<span style='font-size:14px; line-height:14px;'>+{m_it['Liczba']:02d}</span>"
+                    f"<span style='font-size:8px; color:#b9f6ca; line-height:9px;'>{m_it['models_cnt']}/32m</span></div>"
+                )
+            else:
+                m_box = (
+                    f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                    f"width:54px; height:36px; border:1px solid #3c4252; border-radius:6px; background:#1c202b;'>"
+                    f"<span style='font-size:13px; color:#d0d7de; line-height:14px;'>{m_it['Liczba']:02d}</span>"
+                    f"<span style='font-size:8px; color:#8a94a6; line-height:9px;'>{m_it['models_cnt']}/32m</span></div>"
+                )
+            live_m_cells.append(f"<td style='padding:5px 3px; text-align:center; border-right:1px solid #333945;'>{m_box}</td>")
+
+        meta_tbl_rows.append(f"""
+        <tr style='background: linear-gradient(90deg, rgba(0, 180, 216, 0.25) 0%, rgba(255, 209, 102, 0.20) 100%); border-top: 2.5px solid #00b4d8; border-bottom: 3px solid #00b4d8;'>
+            <td style='padding: 6px 6px; color: #90e0ef; font-weight:900; white-space: nowrap; font-size: 11px;'>🔥 #{last_draw_id}<br><span style='font-size:9px; color:#fff;'>({last_time_str})</span></td>
+            <td style='padding: 6px 6px; font-weight:900; color:#00e676; white-space: nowrap; font-size: 12px; border-right:2px solid #00b4d8;'>🎯 #{target_draw_id}<br><span style='font-size:9px; color:#ffd166;'>({target_time_str})</span></td>
+            <td style='padding: 6px 6px; text-align:center; white-space:nowrap; border-right:2px solid #00b4d8;'>
+                <span style='padding:3px 7px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{m1['Liczba']:02d}</span>
+                <span style='padding:3px 7px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{m2['Liczba']:02d}</span>
+                <span style='padding:2px 5px; border:1.5px dashed #00e676; border-radius:5px; background:#0077b6; color:#fff; font-weight:bold; font-size:11px;'>+{m3['Liczba']:02d}</span>
+            </td>
+            {''.join(live_m_cells)}
+            <td style='padding: 6px 6px; text-align:center; font-weight:900; font-size:11px; color:#ffd166; border-left:2px solid #00b4d8;'>⏳ W GRZE</td>
+        </tr>
+        """)
+
+        for mh in meta_hist_rows:
+            ts = mh["t_step"]
+            mt5 = mh["m_top5"]
+            hfl = mh["h_fl"]
+            m_cells = []
+            for k in range(5):
+                bv = mt5[k]["Liczba"]
+                mcnt = mt5[k]["models_cnt"]
+                is_p = (k < 2)
+                tint = "background-color:rgba(0, 180, 216, 0.07);" if is_p else ""
+                if hfl[k]:
+                    bc = "#ffd166" if is_p else "#00e676"
+                    cbox = (
+                        f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                        f"width:54px; height:34px; border:2px solid {bc}; border-radius:6px; background:rgba(0,230,118,0.32); color:#fff; font-weight:bold;'>"
+                        f"<span style='font-size:13px; line-height:13px;'>{bv:02d}</span>"
+                        f"<span style='font-size:8px; color:#b9f6ca; line-height:9px;'>{mcnt}/32m</span></div>"
+                    )
+                else:
+                    cbox = (
+                        f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
+                        f"width:54px; height:34px; border:1px solid #2b303c; border-radius:6px; background:#151821;'>"
+                        f"<span style='font-size:12px; color:#a8b0c0; line-height:13px;'>{bv:02d}</span>"
+                        f"<span style='font-size:8px; color:#6c7385; line-height:9px;'>{mcnt}/32m</span></div>"
+                    )
+                m_cells.append(f"<td style='padding:3px 3px; text-align:center; border-right:1px solid #232731; {tint}'>{cbox}</td>")
+
+            mb1 = f"<span style='padding:2px 5px; border:1.5px solid #ffd166; border-radius:4px; background:rgba(255,209,102,0.32); color:#fff; font-weight:bold;'>{mt5[0]['Liczba']:02d}🟩</span>" if hfl[0] else f"<span style='color:#9da3af;'>{mt5[0]['Liczba']:02d}</span>"
+            mb2 = f"<span style='padding:2px 5px; border:1.5px solid #00e676; border-radius:4px; background:rgba(0,230,118,0.28); color:#fff; font-weight:bold;'>{mt5[1]['Liczba']:02d}🟩</span>" if hfl[1] else f"<span style='color:#9da3af;'>{mt5[1]['Liczba']:02d}</span>"
+            t5c = "#00e676" if mh["t5_h"] >= 2 else ("#ffd166" if mh["t5_h"] == 1 else "#6c7385")
+            t5bg = "rgba(0, 230, 118, 0.16)" if mh["t5_h"] >= 2 else "transparent"
+            meta_tbl_rows.append(f"""
+            <tr style='border-bottom: 1px solid #262a34;'>
+                <td style='padding: 4px 6px; color: #9da3af; white-space: nowrap; font-size: 11px;'>#{all_ids[ts]}<br><span style='font-size:9px; color:#6c7385;'>({all_times[ts]})</span></td>
+                <td style='padding: 4px 6px; font-weight: bold; color: #fff; white-space: nowrap; font-size: 11px; border-right:2px solid #333945;'>#{all_ids[ts + 1]}</td>
+                <td style='padding: 4px 6px; text-align:center; white-space:nowrap; font-size:11px; border-right:2px solid #333945;'>{mb1} &nbsp; {mb2}</td>
+                {''.join(m_cells)}
+                <td style='padding: 4px 6px; text-align:center; font-weight:bold; font-size:12px; color:{t5c}; background:{t5bg}; border-left:2px solid #333945;'>{mh['t5_h']} / 5</td>
+            </tr>
+            """)
+
+        meta_matrix_html = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="utf-8"><style>
+            body {{ margin:0; padding:0; background:#0e1117; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
+            .mc {{ max-height:460px; overflow:auto; border:1.5px solid #00b4d8; border-radius:10px; }}
+            table {{ width:100%; border-collapse:collapse; }}
+            thead {{ position:sticky; top:0; background:#161922; z-index:10; border-bottom:2px solid #333945; }}
+            th {{ padding:7px 5px; text-align:center; color:#e6e6e6; font-size:11px; white-space:nowrap; }}
+        </style></head><body><div class="mc"><table><thead><tr>
+            <th style="text-align:left;">Z losowania</th>
+            <th style="text-align:left; border-right:2px solid #333945;">Do (T+1)</th>
+            <th style="border-right:2px solid #333945; color:#ffd166;">🌐 Meta-Para ({meta_pair_any_20}/{meta_bt_max})</th>
+            <th style="background:#0c2d48; color:#ffd166; border-top:3px solid #ffd166;">👑 Meta #1<br><span style="font-size:9px; color:#fff;">({meta_slot_hits_20[0]}/{meta_bt_max})</span></th>
+            <th style="background:#0c2d48; color:#ffd166; border-top:3px solid #ffd166;">👑 Meta #2<br><span style="font-size:9px; color:#fff;">({meta_slot_hits_20[1]}/{meta_bt_max})</span></th>
+            <th style="background:#083d25; color:#00e676; border-top:2px dashed #00e676;">➕ Meta #3<br><span style="font-size:9px; color:#b9f6ca;">({meta_slot_hits_20[2]}/{meta_bt_max})</span></th>
+            <th>Meta #4<br><span style="font-size:9px; color:#8a94a6;">({meta_slot_hits_20[3]}/{meta_bt_max})</span></th>
+            <th>Meta #5<br><span style="font-size:9px; color:#8a94a6;">({meta_slot_hits_20[4]}/{meta_bt_max})</span></th>
+            <th style="border-left:2px solid #333945; color:#00e676;">META TOP 5</th>
+        </tr></thead><tbody>{''.join(meta_tbl_rows)}</tbody></table></div></body></html>
+        """
+        components.html(meta_matrix_html, height=480, scrolling=False)
+
+    # =====================================================================
+    # STANDARDOWY SKANER 8 OKIEN (5–15) — TA SAMA SPRAWDZONA GRAFIKA CO V24!
+    # =====================================================================
     win_live_top5 = {}
     win_summary_data = {}
     consensus_ball_windows = defaultdict(list)
     consensus_ball_scores = defaultdict(float)
 
     for w_val in all_windows:
-        sc_fn = run_engine_v24(w_val, w_val, matrix_bt_steps)
-        win_scorers[w_val] = sc_fn
-        df_cand_now, _, _, _, _ = sc_fn(latest_idx)
-        live_t5_df = df_cand_now.head(5)
-        live_t5 = [live_t5_df.iloc[idx] for idx in range(5)]
+        live_t5 = win_top5_cache[w_val][latest_idx]
         win_live_top5[w_val] = live_t5
 
         for idx_5, r_row in enumerate(live_t5):
@@ -1027,11 +1436,10 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         top5_2plus_10 = 0
         top5_2plus_30 = 0
 
-        for step_i, step_t in enumerate(range(latest_idx - 1, latest_idx - 1 - matrix_bt_steps, -1)):
-            df_cand_step, _, _, _, _ = sc_fn(step_t)
-            step_t5_df = df_cand_step.head(5)
-            nxt_s = all_sets[step_t + 1]
-            h_flags = [int(step_t5_df.iloc[idx]["Liczba"]) in nxt_s for idx in range(5)]
+        for step_i in range(matrix_bt_steps):
+            step_t = latest_idx - 1 - step_i
+            h_flags = win_hits_cache[w_val][step_t]
+            step_t5_list = win_top5_cache[w_val][step_t]
             h_cnt = sum(1 for f in h_flags if f)
 
             if h_cnt >= 2:
@@ -1046,7 +1454,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 top5_2plus_10 += 1
 
             for ic, jc in all_pair_combos:
-                eff_i, eff_j, _ = resolve_pair_with_leader_lock(step_t5_df, ic, jc)
+                eff_i, eff_j, _ = resolve_pair_with_leader_lock(step_t5_list, ic, jc)
                 c_hits = (1 if h_flags[eff_i] else 0) + (1 if h_flags[eff_j] else 0)
                 if c_hits == 2:
                     pair_stats[(ic, jc)]["both_30"] += 1
@@ -1080,8 +1488,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         else:
             base_s1, base_s2 = c1, c2
 
-        # Zastosowanie Blokady Dominującego Lidera na aktualnym losowaniu
-        act_s1, act_s2, leader_locked_now = resolve_pair_with_leader_lock(live_t5_df, base_s1, base_s2)
+        act_s1, act_s2, leader_locked_now = resolve_pair_with_leader_lock(live_t5, base_s1, base_s2)
 
         rem_slots = [s for s in range(5) if s not in (act_s1, act_s2)]
         best_s3 = max(rem_slots, key=lambda s: (slot_hits_30[s] * 0.6 + slot_hits_10[s] * 1.4, float(live_t5[s]["Score"])))
@@ -1136,9 +1543,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     w1_info = win_summary_data[first_place_win]
     w2_info = win_summary_data[second_place_win]
 
-    # =====================================================================
-    # WYZNACZENIE 2 GŁÓWNYCH LICZB ORAZ DECYZJA O 3. LICZBIE DODATKOWEJ
-    # =====================================================================
     main_ball_1 = w1_info["b1"]
     main_ball_2 = w1_info["b2"]
     cand_ball_3 = w1_info["b3"]
@@ -1185,19 +1589,16 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     consensus_str_list = [f"<b>{b:02d}</b> ({len(w_l)}/8 okn.)" for b, w_l in sorted_consensus[:5]]
     consensus_html = " &nbsp;|&nbsp; ".join(consensus_str_list)
 
-    # =====================================================================
-    # GŁÓWNY PANEL DECYZYJNY V24 (IDENTYCZNA GRAFIKA JAK W V23)
-    # =====================================================================
     p30_pct = (w1_info["pair_any_30"] / matrix_bt_steps) * 100.0
     lock_tag_txt = " 🔒(Blokada Dominującego #1!)" if w1_info["leader_locked"] else ""
-    hero_v24_html = (
+    hero_v25_html = (
         f"<div style='background: linear-gradient(135deg, rgba(14, 48, 35, 0.98) 0%, rgba(9, 28, 21, 0.99) 100%); "
         f"border: 3px solid #ffd166; border-radius: 14px; padding: 16px 20px; margin-bottom: 18px; "
         f"box-shadow: 0 6px 20px rgba(255, 209, 102, 0.25); font-family: sans-serif;'>"
         f"<div style='display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.55); "
         f"border:2px solid #00e676; border-radius:9px; padding:10px 16px; margin-bottom:14px;'>"
         f"<div style='font-size:16px; font-weight:900; color:#00e676;'>"
-        f"🎯 TERAZ OBSTAWIASZ NA LOSOWANIE: <span style='color:#ffffff; background:#e63946; padding:3px 10px; border-radius:6px; font-size:18px;'>#{target_draw_id} (godz. {target_time_str})</span>"
+        f"🎯 ZWYCIĘSKIE POJEDYNCZE OKNO NA: <span style='color:#ffffff; background:#e63946; padding:3px 10px; border-radius:6px; font-size:18px;'>#{target_draw_id} (godz. {target_time_str})</span>"
         f"</div>"
         f"<div style='font-size:13px; color:#ffd166; font-weight:bold;'>"
         f"🏆 Wybrano (30g+10g): <b>OKNO {first_place_win}</b> — kolumny <b>Typ #{w1_info['best_s1']+1} + Typ #{w1_info['best_s2']+1}</b>{lock_tag_txt} "
@@ -1208,7 +1609,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         f"<div style='display: inline-flex; align-items: center; gap: 12px; background: rgba(0, 0, 0, 0.65); "
         f"border: 3px solid #ffd166; border-radius: 12px; padding: 10px 18px; box-shadow: 0 0 16px rgba(255, 209, 102, 0.45);'>"
         f"<div>"
-        f"<div style='font-size: 14px; color: #ffd166; font-weight: 900;'>👑 2 GŁÓWNE LICZBY DO GRY NA #{target_draw_id}:</div>"
+        f"<div style='font-size: 14px; color: #ffd166; font-weight: 900;'>👑 2 GŁÓWNE LICZBY Z OKNA {first_place_win}:</div>"
         f"<div style='font-size: 11px; color: #e6e6e6;'>"
         f"1. <b>Typ #{w1_info['best_s1']+1}</b> (Siła: {w1_info['b1_score']:.0f} | 30g: {w1_info['s1_hits30']}/30 | w {w1_info['c_b1']}/8 okn.) &nbsp;|&nbsp; "
         f"2. <b>Typ #{w1_info['best_s2']+1}</b> (Siła: {w1_info['b2_score']:.0f} | 30g: {w1_info['s2_hits30']}/30 | w {w1_info['c_b2']}/8 okn.)"
@@ -1226,7 +1627,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         f"</div>"
         f"</div>"
     )
-    st.markdown(hero_v24_html, unsafe_allow_html=True)
+    st.markdown(hero_v25_html, unsafe_allow_html=True)
 
     # =====================================================================
     # TABELA 1: ZESTAWIENIE OKIEN ANALIZY (5–15)
@@ -1323,7 +1724,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     components.html(clean_windows_table_html, height=480, scrolling=True)
 
     # =====================================================================
-    # TABELA NR 2 — IDENTYCZNY CZYTELNY UKŁAD + AUTO-SYNC DO ZWYCIĘSKIEGO OKNA
+    # TABELA NR 2 — CZYTELNA TABELA GŁÓWNA + AUTO-SYNC
     # =====================================================================
     st.divider()
     col_s1, col_s2 = st.columns([1.3, 0.9])
@@ -1335,7 +1736,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             options=win_radio_opts,
             index=0,
             horizontal=True,
-            key="v24_detail_win_radio"
+            key="v25_detail_win_radio"
         )
         detail_win = first_place_win if selected_win_opt == auto_opt_label else int(selected_win_opt)
     with col_s2:
@@ -1344,11 +1745,11 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             options=[10, 15, 20, 30],
             index=2,
             horizontal=True,
-            key="v24_detail_bt_radio"
+            key="v25_detail_bt_radio"
         )
 
     active_scorer = win_scorers[detail_win]
-    df_predictions, latest_win_freq, latest_win_t1, latest_modes_set, _ = active_scorer(latest_idx)
+    df_predictions, latest_win_freq, latest_win_t1, latest_modes_set, _ = active_scorer(latest_idx, return_df=True)
     latest_curr_set = all_sets[latest_idx]
     det_info = win_summary_data[detail_win]
     base_s1, base_s2 = det_info["base_s1"], det_info["base_s2"]
@@ -1359,7 +1760,6 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     bt_html_rows = []
     top5_slot_hits = {slot: 0 for slot in range(1, 6)}
 
-    # PIERWSZY WIERSZ: NAJNOWSZE LOSOWANIE W GRZE
     live_g1_ball = int(top_5_Row.iloc[sel_s1]["Liczba"])
     live_g2_ball = int(top_5_Row.iloc[sel_s2]["Liczba"])
     live_g3_ball = int(top_5_Row.iloc[sel_s3]["Liczba"])
@@ -1423,26 +1823,22 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     """)
 
     for step_t in range(latest_idx - 1, latest_idx - 1 - detail_bt, -1):
-        df_step_pred, _, _, _, _ = active_scorer(step_t)
+        cands_step, _, _, _, _ = active_scorer(step_t, return_df=False)
         next_actual_set = all_sets[step_t + 1]
 
-        top5_df = df_step_pred.head(5)
-        top8_df = df_step_pred.head(8)
+        top5_list = cands_step[:5]
+        top8_list = cands_step[:8]
 
-        top5_nums = top5_df["Liczba"].tolist()
-        top8_nums = top8_df["Liczba"].tolist()
-
-        # Identyczna zasada Blokady Dominującego Lidera w każdym wierszu historii!
-        st_s1, st_s2, st_locked = resolve_pair_with_leader_lock(top5_df, base_s1, base_s2)
-        g1_ball = int(top5_df.iloc[st_s1]["Liczba"])
-        g2_ball = int(top5_df.iloc[st_s2]["Liczba"])
-        g1_m = int(top5_df.iloc[st_s1]["blue_m"])
-        g2_m = int(top5_df.iloc[st_s2]["blue_m"])
+        st_s1, st_s2, st_locked = resolve_pair_with_leader_lock(top5_list, base_s1, base_s2)
+        g1_ball = int(top5_list[st_s1]["Liczba"])
+        g2_ball = int(top5_list[st_s2]["Liczba"])
+        g1_m = int(top5_list[st_s1]["blue_m"])
+        g2_m = int(top5_list[st_s2]["blue_m"])
         g1_hit = (g1_ball in next_actual_set)
         g2_hit = (g2_ball in next_actual_set)
 
         slot_cells_html = []
-        for slot_idx, (_, r_pred) in enumerate(top5_df.iterrows()):
+        for slot_idx, r_pred in enumerate(top5_list):
             slot_nr = slot_idx + 1
             b_val = int(r_pred["Liczba"])
             k_pos = int(r_pred["pos_nr"])
@@ -1476,8 +1872,8 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
         g2_badge = f"<span style='padding:2px 5px; border:1.5px solid #00e676; border-radius:4px; background:rgba(0,230,118,0.28); color:#fff; font-weight:bold;'>{g2_ball:02d}(M.{g2_m})🟩</span>" if g2_hit else f"<span style='color:#9da3af;'>{g2_ball:02d}(M.{g2_m})</span>"
         golden_cell_html = f"{g1_badge} &nbsp; {g2_badge}"
 
-        hits_5_cnt = sum(1 for n in top5_nums if n in next_actual_set)
-        hits_8_cnt = sum(1 for n in top8_nums if n in next_actual_set)
+        hits_5_cnt = sum(1 for r_x in top5_list if r_x["Liczba"] in next_actual_set)
+        hits_8_cnt = sum(1 for r_x in top8_list if r_x["Liczba"] in next_actual_set)
 
         h5_color = "#00e676" if hits_5_cnt >= 2 else ("#ffd166" if hits_5_cnt == 1 else "#6c7385")
         h5_bg = "rgba(0, 230, 118, 0.16)" if hits_5_cnt >= 2 else "transparent"
@@ -1560,7 +1956,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
     with col_pred_table:
         st.markdown(f"#### 📊 3. Pełny Ranking 20 liczb z #{last_draw_id} ➔ na #{target_draw_id} (Okno = {detail_win})")
         df_display_pred = df_predictions.drop(
-            columns=["pos_nr", "blue_m", "pos_white_hits", "trans_count", "pos_white_pct", "w15_hits", "b_hits_cnt", "orig_bwin_cnt", "b_steps", "b_hit_pct", "has_t1_sq", "ball_t1_total"]
+            columns=["pos_nr", "blue_m", "pos_white_hits", "trans_count", "pos_white_pct", "w15_hits", "b_hits_cnt", "orig_bwin_cnt", "b_steps", "b_hit_pct", "has_t1_sq", "is_blue_leader", "ball_t1_total"]
         ).copy()
         st.dataframe(
             df_display_pred,
@@ -1569,7 +1965,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
                 "Pozycja": st.column_config.TextColumn("Poz. (🟦 Miejsce)", width="medium"),
                 "Liczba": st.column_config.NumberColumn("Kula", width="small"),
                 "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-                "Status V24": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
+                "Status V25": st.column_config.TextColumn("Status Weryfikacji", width="medium"),
                 "⬜ Własne Poz. (i z 15)": st.column_config.TextColumn(f"⬜ Własne ({detail_win} i 15)", width="medium"),
                 "🟦 Kolumna M (i Stałe)": st.column_config.TextColumn(f"🟦 Kolumna M ({detail_win})", width="medium"),
                 "Pod pozycją (Węzeł)": st.column_config.TextColumn("Pod pozycją", width="medium"),
@@ -1579,7 +1975,7 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             hide_index=True,
             use_container_width=True,
             height=520,
-            key="pred_main_ranking_tbl_v24"
+            key="pred_main_ranking_tbl_v25"
         )
 
     with col_hot_all:
@@ -1611,8 +2007,8 @@ def render_prediction_algorithm(df_full, default_window=8, default_blue_win=8, d
             hide_index=True,
             use_container_width=True,
             height=520,
-            key="hot_70_check_tbl_v24"
+            key="hot_70_check_tbl_v25"
         )
 
-# Wywołanie modułu V24:
+# Wywołanie modułu V25:
 render_prediction_algorithm(df, default_window=8, default_blue_win=8, default_backtest=10)
