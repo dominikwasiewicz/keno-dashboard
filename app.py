@@ -575,11 +575,11 @@ render_keno_section(section_id=1, default_top_val=20)
 
 
 # =====================================================================
-# MODUŁ ALGORYTMU PREDYKCYJNEGO V30 (NAPISANY OD ZERA — CZYSTY, SPÓJNY, BEZ PRZEGRZEWANIA):
-# 1) 3 RÓWNE FILARY PUNKTACJI: SIŁA POZYCJI + ŚWIEŻOŚĆ WĘZŁA + ZŁOTA FALA KULI (30–58%)
-# 2) TWARDE SCHŁADZANIE PRZEGRZANYCH KUL (>=70% CZĘSTOŚCI LUB 3x Z RZĘDU) — ZERO TŁOKU W 8/8 OKNACH
-# 3) KONIEC ZE SKAKANIEM PO SLOTACH I ZACINAJĄCYM SIĘ META-SELEKTOREM — ZAWSZE CZYSTE #1 + #2 (+#3)
-# 4) CAŁKOWITE UKRYCIE KOLUMN M.xx W TRYBIE "⬜ BEZ NIEBIESKIEJ" + CZYSTY TEST A/B NA CAŁEJ BAZIE
+# MODUŁ ALGORYTMU PREDYKCYJNEGO V31 (NAPRAWA V30 + RADAR OPÓŹNIEŃ ECHO T+2 + TEST NA CAŁEJ BAZIE):
+# 1) NAPRAWA BŁĘDÓW V30: ZŁOTA FALA DO 62% (ŁAPIE 3/5=60%), KONIEC Z KARĄ DLA 3x Z RZĘDU, TRANSFER ±1⬜
+# 2) NOWY MODUŁ "🔄 RADAR OPÓŹNIEŃ (ECHO T+2)": ŚLEDZI PUDŁA Z POPRZEDNIEGO TYPOWANIA NA KOLEJNĄ GRĘ
+# 3) NOWA KOLUMNA "🔄 Echo T+2" W TABELI NR 2 + PROPOZYCJA MIKSU (#1 ŚWIEŻA + #1 ECHO)
+# 4) NOWY "🔭 TEST 3: EFEKT OPÓŹNIENIA T+2" W PANELU A/B — EMPIRYCZNY SPRAWDZIAN NA CAŁEJ BAZIE ~1130 GIER
 # =====================================================================
 from collections import defaultdict, Counter
 from datetime import datetime, timedelta
@@ -591,8 +591,8 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     eval_long = 30
     eval_short = 10
 
-    if len(df_full) < 60:
-        st.warning(f"Za mało danych w bazie ({len(df_full)}), aby uruchomić moduł V30 (wymagane min. 60 losowań).")
+    if len(df_full) < 65:
+        st.warning(f"Za mało danych w bazie ({len(df_full)}), aby uruchomić moduł V31 (wymagane min. 65 losowań).")
         return
 
     all_lists = df_full["numbers_list"].tolist()
@@ -611,31 +611,31 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     except Exception:
         target_time_str = "T+1 (za 4 min)"
 
-    st.header(f"🧠 Algorytm V30 (Nowy, Czysty Silnik) — Typy na #{target_draw_id} (godz. {target_time_str})")
+    st.header(f"🧠 Algorytm V31 — Naprawiony Silnik + Radar Opóźnień (Echo T+2) na #{target_draw_id} (godz. {target_time_str})")
 
     # =================================================================
-    # WYBÓR TRYBU SILNIKA (HYBRYDA vs CZYSTA TABELA 1 BEZ NIEBIESKIEJ)
+    # WYBÓR TRYBU SILNIKA
     # =================================================================
     mode_map = {
-        "🔄 Hybryda (Tabela 1 + Niebieska 🟦)": "hybrid",
         "⬜ Bez Tabeli Niebieskiej (Tylko Tabela 1 + Kule)": "no_blue",
+        "🔄 Hybryda (Tabela 1 + Niebieska 🟦)": "hybrid",
     }
     selected_mode_label = st.radio(
-        "🎛️ Tryb silnika V30 (w trybie ⬜ Bez Niebieskiej kolumny M.xx są całkowicie wyłączone i ukryte):",
+        "🎛️ Tryb silnika V31 (w trybie ⬜ Bez Niebieskiej kolumny M.xx są całkowicie wyłączone i ukryte):",
         options=list(mode_map.keys()),
         index=0,
         horizontal=True,
-        key="v30_engine_mode_radio"
+        key="v31_engine_mode_radio"
     )
     active_mode = mode_map[selected_mode_label]
     is_no_blue = (active_mode == "no_blue")
     mode_tag = "⬜ BEZ NIEBIESKIEJ" if is_no_blue else "🔄 HYBRYDA"
 
     # =================================================================
-    # CZYSTY SILNIK V30: 3 FILARY + SCHŁADZANIE PRZEGRZAŃ (>=70% LUB 3x Z RZĘDU)
+    # SILNIK V31: NAPRAWIONA ZŁOTA FALA (30-62%), SERIA 3x BEZ KARY + TRANSFER ±1⬜
     # =================================================================
-    def build_scorer_v30(w_size, steps_back, engine_mode="hybrid"):
-        earliest_needed = max(max(w_size, 15) - 1, total_draws - 1 - steps_back - max(w_size, 15) - 4)
+    def build_scorer_v31(w_size, steps_back, engine_mode="no_blue"):
+        earliest_needed = max(max(w_size, 15) - 1, total_draws - 1 - steps_back - max(w_size, 15) - 6)
         min_mode_thr = 3 if w_size >= 12 else 2
         use_blue = (engine_mode == "hybrid")
         local_meta = {}
@@ -703,6 +703,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             trans_count = max(1, len(w_lists) - 1)
             curr_nums = all_lists[t_idx]
 
+            prev1_list = all_lists[t_idx - 1] if t_idx >= 1 else []
             prev1_set = all_sets[t_idx - 1] if t_idx >= 1 else set()
             prev2_set = all_sets[t_idx - 2] if t_idx >= 2 else set()
             prev3_set = all_sets[t_idx - 3] if t_idx >= 3 else set()
@@ -716,7 +717,6 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             blue_col_map = meta_now["blue_col_for_pos"]
             max_w15 = max(white_15_now[1:]) if total_draws > 1 else 5
 
-            # Świeżość białych kwadratów z ostatnich 3 losowań
             sq1 = [False] * 21
             sq2 = [False] * 21
             sq3 = [False] * 21
@@ -736,7 +736,6 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     if l3[p] in s2:
                         sq3[p + 1] = True
 
-            # Statystyki Tabeli Niebieskiej (liczone WYŁĄCZNIE w trybie Hybryda)
             blue_hits = [0] * 21
             blue_r2 = [0] * 21
             blue_steps = 0
@@ -756,7 +755,6 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                 prev1_blue = local_meta[t_idx - 1]["blue_hit_by_col"] if (t_idx - 1) in local_meta else {}
                 prev2_blue = local_meta[t_idx - 2]["blue_hit_by_col"] if (t_idx - 2) in local_meta else {}
 
-            # Częstość i powtórki samych kul w oknie bieżącym i oknie 15
             win_ball_freq = [0] * 71
             win_ball_t1 = [0] * 71
             for k_i, d_l in enumerate(w_lists):
@@ -798,34 +796,36 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                 bf_rate = bf_win / max(1, w_size)
                 bt1_win = win_ball_t1[ball]
                 bt1_15 = ball15_t1[ball]
-                bf_15 = ball15_freq[ball]
 
                 in_p1 = (ball in prev1_set)
                 in_p2 = (ball in prev2_set)
                 in_p3 = (ball in prev3_set)
                 streak_len = 1 + (1 if in_p1 else 0) + (1 if (in_p1 and in_p2) else 0) + (1 if (in_p1 and in_p2 and in_p3) else 0)
 
+                # NOWOŚĆ V31: Wykrywanie sąsiedniego transferu z białego kwadratu (np. 03 z Poz.02⬜ -> Poz.01🔴!)
+                is_adj_transfer = False
+                src_pos = None
+                if in_p1 and prev1_list:
+                    src_pos = prev1_list.index(ball) + 1
+                    if src_pos != pos_nr and abs(src_pos - pos_nr) <= 1 and sq1[src_pos]:
+                        is_adj_transfer = True
+
                 mode_ball, mode_cnt = pos_modes_now[pos_nr]
                 is_exact_mode = (ball == mode_ball and mode_cnt >= min_mode_thr)
                 mode_str = f"🎯 Lider P{pos_nr:02d} (x{mode_cnt})" if is_exact_mode else ("⭐ W 'Najczęstszej'" if ball in all_modes_set_now else "-")
 
-                # -----------------------------------------------------------
-                # FILAR 1: SIŁA POZYCJI (Tabela 15 + okno bieżące)
-                # -----------------------------------------------------------
-                # Gładka krzywa dzwonowa: szczyt w zdrowym paśmie 33–58% (bez pompowania >65%)
-                if 0.33 <= pw_rate <= 0.58:
+                # FILAR 1: SIŁA POZYCJI (wyraźna różnica między 1/4=25% a 3/4=75%!)
+                if 0.33 <= pw_rate <= 0.62:
                     pts_pw = 18.0
-                elif pw_rate > 0.58:
-                    pts_pw = max(12.0, 18.0 - (pw_rate - 0.58) * 18.0)
+                elif pw_rate <= 0.78:
+                    pts_pw = 16.5 if pw_rate > 0.62 else (pw_rate / 0.33) * 13.0
                 else:
-                    pts_pw = (pw_rate / 0.33) * 16.0
+                    pts_pw = 14.0
 
                 pts_w15 = (w15_ratio * 18.0) if w15_h >= 3 else (w15_ratio * 10.0)
-                pillar_pos = pts_pw + pts_w15  # max ~36 pkt
+                pillar_pos = pts_pw + pts_w15
 
-                # -----------------------------------------------------------
-                # FILAR 2: ŚWIEŻOŚĆ WĘZŁA (+ TABELA NIEBIESKA TYLKO W HYBRYDZIE)
-                # -----------------------------------------------------------
+                # FILAR 2: ŚWIEŻOŚĆ WĘZŁA (+ TRANSFER ±1⬜)
                 m_col = blue_col_map.get(pos_nr, 0) if use_blue else 0
                 b_cnt = blue_hits[m_col] if use_blue else 0
                 b_rate = (b_cnt / denom_b) if use_blue else 0.0
@@ -833,13 +833,15 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                 b_u2 = prev2_blue.get(m_col, False) if use_blue else False
 
                 if use_blue:
-                    # Tryb HYBRYDA: zbalansowane ⬜ + 🟦 (max 36 pkt)
                     if s_d1 and b_u1:
                         pts_node = 16.0
                         path_str = "⬜+🟦 Podwójny kwadrat w T-1"
                     elif s_d1:
                         pts_node = 13.5
                         path_str = "⬜ Biały kwadrat w T-1"
+                    elif is_adj_transfer:
+                        pts_node = 13.5
+                        path_str = f"🔄⬜ Transfer z Poz.{src_pos:02d}⬜"
                     elif b_u1:
                         pts_node = 12.5
                         path_str = f"🟦 Niebieski kwadrat M.{m_col:02d} w T-1"
@@ -856,13 +858,10 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                         pts_node = 0.0
                         path_str = "Cisza w 2 ost."
 
-                    # Umiarkowana waga kolumny Niebieskiej (max 18 pkt — nigdy nie dominuje nad Tabelą 1!)
                     pts_blue = min(18.0, (b_rate / 0.50) * 16.0 + (2.0 if (m_col <= 6 and b_rate >= 0.30) else 0.0))
-                    # Jeśli pozycja ma już 3 białe kwadraty z rzędu, lekkie schłodzenie pozycji
                     pos_fatigue = -4.0 if (s_d1 and s_d2 and s_d3) else 0.0
                     pillar_node = max(0.0, pts_node + pts_blue + pos_fatigue)
                 else:
-                    # Tryb BEZ NIEBIESKIEJ: 100% czysta Tabela 1 (max 34 pkt)
                     if s_d1 and s_d2 and s_d3:
                         pts_node = 16.0
                         path_str = "⬜⬜⬜ 3x z rzędu (lekkie chłodzenie)"
@@ -872,14 +871,17 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     elif s_d1:
                         pts_node = 20.0
                         path_str = "⬜ Biały kwadrat w T-1"
+                    elif is_adj_transfer:
+                        pts_node = 19.0
+                        path_str = f"🔄⬜ Transfer z Poz.{src_pos:02d}⬜"
                     elif s_d2:
-                        pts_node = 14.0
+                        pts_node = 13.5
                         path_str = "⬜ Biały kwadrat w T-2"
                     elif s_d3:
-                        pts_node = 9.0
+                        pts_node = 8.5
                         path_str = "⬜ Biały kwadrat w T-3"
                     elif s_adj:
-                        pts_node = 6.0
+                        pts_node = 5.5
                         path_str = "⬜ Kwadrat na sąsiedniej pozycji"
                     else:
                         pts_node = 0.0
@@ -888,53 +890,53 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     pts_recent_density = min(10.0, o_r3 * 3.5)
                     pillar_node = pts_node + pts_recent_density
 
-                # -----------------------------------------------------------
-                # FILAR 3: DYNAMIKA KULI + TWARDE SCHŁADZANIE PRZEGRZAŃ (>=70% / 3x Z RZĘDU)
-                # -----------------------------------------------------------
-                is_overheated = (bf_rate >= 0.70) or (streak_len >= 4)
-                is_warm_streak = (streak_len == 3)
-                is_golden_wave = (0.30 <= bf_rate <= 0.58) and (bt1_win >= 1 or bt1_15 >= 2)
+                # FILAR 3: NAPRAWIONA DYNAMIKA KULI (ZŁOTA FALA 30–62%, KONIEC Z KARĄ DLA 3x Z RZĘDU!)
+                is_overheated = (bf_rate >= 0.75) or (streak_len >= 4)
+                is_golden_wave = (0.30 <= bf_rate <= 0.62) and (bt1_win >= 1 or bt1_15 >= 2)
 
                 if is_overheated:
-                    # Kula wyeksploatowana (np. 4/5 = 80% jak 15 i 21!) — twarde schłodzenie zamiast bonusu!
-                    pts_wave = -8.5 if bf_rate >= 0.75 else -6.0
-                    wave_tag = f"🔥⚠️ Przegrzana ({bf_win}/{w_size} = {bf_rate*100:.0f}%)"
-                elif is_warm_streak:
-                    pts_wave = 3.5
-                    wave_tag = f"🔴🔴 3x z rzędu ({bf_rate*100:.0f}%)"
+                    pts_wave = -8.0
+                    wave_tag = f"🌡️ Przegrzana ({bf_win}/{w_size} = {bf_rate*100:.0f}%)"
+                elif is_golden_wave and streak_len == 3:
+                    # Naprawa dla kuli 3 (3/5=60%, 2x powt. T+1, 3x z rzędu): silna, aktywna fala bez kary!
+                    pts_wave = 14.5
+                    wave_tag = f"🔥 Aktywna Seria 3x ({bf_win}/{w_size}={bf_rate*100:.0f}%)"
                 elif is_golden_wave:
-                    pts_wave = 16.0
+                    pts_wave = 15.5
                     wave_tag = f"🎯 Złota Fala ({bf_win}/{w_size} = {bf_rate*100:.0f}%)"
-                elif 0.25 <= bf_rate <= 0.65:
-                    pts_wave = 10.0
+                elif streak_len == 3:
+                    pts_wave = 10.5
+                    wave_tag = f"🔴🔴 Seria 3x ({bf_win}/{w_size})"
+                elif 0.25 <= bf_rate <= 0.68:
+                    pts_wave = 9.5
                     wave_tag = f"⚖️ Stabilna ({bf_win}/{w_size})"
                 else:
                     pts_wave = 5.0
                     wave_tag = f"🌱 Świeża ({bf_win}/{w_size})"
 
-                # Umiarkowane punkty za powtórki T+1 (z twardym sufitem, bez pompowania!)
-                pts_rep = min(10.0, bt1_win * 3.0 + bt1_15 * 1.2)
-                pts_mode = 5.0 if is_exact_mode else (2.5 if ball in all_modes_set_now else 0.0)
+                pts_rep = min(11.0, bt1_win * 3.4 + bt1_15 * 1.2)
+                pts_mode = 5.5 if is_exact_mode else (3.0 if ball in all_modes_set_now else 0.0)
                 pillar_ball = pts_wave + pts_rep + pts_mode
 
-                # Delikatna korekta dla zupełnie uśpionych miejsc
                 cold_adj = 0.0
-                if o_r3 == 0 and (not use_blue or blue_r2[m_col] == 0):
+                if o_r3 == 0 and not is_adj_transfer and (not use_blue or blue_r2[m_col] == 0):
                     cold_adj -= 7.0
-                if w15_h <= 1 and n15_trans_now >= 12 and not s_d1:
+                if w15_h <= 1 and n15_trans_now >= 12 and not s_d1 and not is_adj_transfer:
                     cold_adj -= 6.0
 
-                # Skalowanie gładkie do 5–98 pkt
                 raw_total = (pillar_pos * (0.88 if use_blue else 1.0)) + pillar_node + pillar_ball + cold_adj
                 final_score = round(min(98.0, max(5.0, raw_total)), 1)
 
-                # Czytelny status
                 if is_overheated:
                     verdict_str = f"🌡️ Schłodzona ({bf_win}/{w_size}={bf_rate*100:.0f}%)"
+                elif is_adj_transfer and is_golden_wave:
+                    verdict_str = f"🔥 Transfer z P{src_pos:02d}⬜ + Złota Fala"
                 elif is_golden_wave and (s_d1 or (use_blue and b_u1)):
-                    verdict_str = f"💎 Złota Fala + Kwadrat T-1"
+                    verdict_str = "💎 Złota Fala + Kwadrat T-1"
                 elif is_golden_wave and w15_h >= max(4, max_w15 - 1):
-                    verdict_str = f"🏆 Lider 15 + Złota Fala"
+                    verdict_str = "🏆 Lider 15 + Złota Fala"
+                elif is_adj_transfer:
+                    verdict_str = f"🔄 Transfer z P{src_pos:02d}⬜"
                 elif s_d1:
                     verdict_str = f"⬜ Żywy Kwadrat Poz.{pos_nr:02d}"
                 elif use_blue and b_u1:
@@ -959,7 +961,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     "Pozycja": pos_label,
                     "Liczba": ball,
                     "Score": final_score,
-                    "Status V30": verdict_str,
+                    "Status V31": verdict_str,
                     "⬜ Własne (okno i 15)": f"{pw_hits}/{trans_count} ({pw_rate*100:.0f}%) | 15: {w15_h}/{n15_trans_now}",
                     "🟦 Kolumna M": f"M.{m_col:02d}: {b_cnt}/{blue_steps} ({b_rate*100:.0f}%)" if use_blue else "-",
                     "Węzeł": path_str,
@@ -967,7 +969,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     "⭐ Najczęstsza": mode_str
                 })
 
-            candidates.sort(key=lambda x: (-x["Score"], x["is_overheated"], -x["w15_hits"], -x["pw_pct"]))
+            candidates.sort(key=lambda x: (-x["Score"], x["is_overheated"], -x["bt1_win"], -x["w15_hits"]))
             for idx_c, c_it in enumerate(candidates):
                 c_it["Rank"] = f"#{idx_c + 1}"
 
@@ -982,45 +984,54 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
 
         return score_at_t
 
+    # Funkcja pomocnicza: wyznacza opóźnione pudła (Echo T+2) z poprzedniego kroku (t_idx - 1)
+    def get_echo_candidates_at_t(scorer_fn, t_idx):
+        prev_cands, _, _, _ = scorer_fn(t_idx - 1, return_df=False)
+        actual_at_t = all_sets[t_idx]
+        missed_pair = [c for c in prev_cands[:2] if c["Liczba"] not in actual_at_t]
+        missed_rest = [c for c in prev_cands[2:5] if c["Liczba"] not in actual_at_t]
+        return missed_pair, missed_rest
+
     # =================================================================
-    # 🔬 PANEL TESTU A/B V30 (WALK-FORWARD NA CAŁEJ BAZIE — BEZ SZUMU)
+    # 🔬 PANEL TESTÓW A/B + TEST 3: EMPIRYCZNY SPRAWDZIAN EFEKTU OPÓŹNIENIA (ECHO T+2)
     # =================================================================
-    with st.expander(f"🔬 TEST A/B V30: Sprawdź Hybrydę vs Bez Niebieskiej oraz Wszystkie 8 Okien na całej bazie ({max(30, total_draws - 40)} gier)", expanded=False):
+    with st.expander(f"🔬 TESTY A/B V31 & SPRAWDZENIE EFEKTU OPÓŹNIENIA T+2 (na bazie do {max(30, total_draws - 48)} gier!)", expanded=False):
         st.caption(
-            "Test mierzy czystą czołówkę rankingu **#1 + #2** oraz **TOP 5** (zero sztucznego dopasowywania slotów) "
-            "i porównuje z teoretyczną losowością Keno (`28,57%` na kulę, `49,28%` min. 1 z pary, `7,87%` pełne `2/2`)."
+            "Sprawdź na całej bazie: **(1)** Hybryda vs Bez Niebieskiej, **(2)** wszystkie 8 okien oraz "
+            "**(3)** Twoją teorię **Opóźnienia (Echo T+2)** — czy pudła z poprzedniego typowania naprawdę wpadają częściej w kolejnej grze!"
         )
-        ab_max = max(30, total_draws - 40)
+        ab_max = max(30, total_draws - 48)
         ab_len_opts = [x for x in [100, 250, 500] if x < ab_max] + [ab_max]
 
-        c_ab1, c_ab2, c_ab3 = st.columns([1.0, 0.9, 1.3])
+        c_ab1, c_ab2 = st.columns([1.15, 0.85])
         with c_ab1:
             ab_len = st.radio(
-                "📊 Liczba losowań:",
+                "📊 Liczba losowań w teście:",
                 options=ab_len_opts,
                 index=len(ab_len_opts) - 1,
                 format_func=lambda x: f"Cała baza ({x})" if x == ab_max else f"{x} gier",
                 horizontal=True,
-                key="v30_ab_len"
+                key="v31_ab_len"
             )
         with c_ab2:
             ab_win = st.radio(
-                "⚙️ Okno do Testu 1:",
-                options=[6, 8, 10, 12, 15],
-                index=2,
+                "⚙️ Okno do Testu 1 i Testu 3 (Echo):",
+                options=[5, 6, 8, 10, 15],
+                index=3,
                 horizontal=True,
-                key="v30_ab_win"
+                key="v31_ab_win"
             )
-        with c_ab3:
-            st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
-            b_t1, b_t2 = st.columns(2)
-            with b_t1:
-                run_t1 = st.button(f"🚀 Test 1: Hybryda vs Bez Nieb. ({ab_len}g)", type="primary", use_container_width=True, key="v30_btn_t1")
-            with b_t2:
-                run_t2 = st.button(f"📊 Test 2: Wszystkie 8 Okien ({ab_len}g)", use_container_width=True, key="v30_btn_t2")
 
-        def eval_clean_v30(w_sz, e_mode, n_eval):
-            sc = build_scorer_v30(w_sz, n_eval + 2, engine_mode=e_mode)
+        b_t1, b_t2, b_t3 = st.columns(3)
+        with b_t1:
+            run_t1 = st.button(f"🚀 Test 1: Hybryda vs Bez Nieb. ({ab_len}g)", use_container_width=True, key="v31_btn_t1")
+        with b_t2:
+            run_t2 = st.button(f"📊 Test 2: Wszystkie 8 Okien ({ab_len}g)", use_container_width=True, key="v31_btn_t2")
+        with b_t3:
+            run_t3 = st.button(f"🔭 Test 3: Sprawdź Echo T+2 ({ab_len}g)", type="primary", use_container_width=True, key="v31_btn_t3")
+
+        def eval_clean_v31(w_sz, e_mode, n_eval):
+            sc = build_scorer_v31(w_sz, n_eval + 4, engine_mode=e_mode)
             p_any = p_both = t5_hits = t5_2p = t5_3p = s1_h = s2_h = 0
             for st_i in range(n_eval):
                 t_c = latest_idx - 1 - st_i
@@ -1041,20 +1052,19 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             }
 
         if run_t1:
-            prog = st.progress(0, text=f"Testuję V30 na {ab_len} losowaniach (Okno {ab_win})...")
-            r_hy = eval_clean_v30(ab_win, "hybrid", ab_len)
+            prog = st.progress(0, text=f"Testuję V31 na {ab_len} losowaniach (Okno {ab_win})...")
+            r_nb = eval_clean_v31(ab_win, "no_blue", ab_len)
             prog.progress(0.5)
-            r_nb = eval_clean_v30(ab_win, "no_blue", ab_len)
+            r_hy = eval_clean_v31(ab_win, "hybrid", ab_len)
             prog.progress(1.0)
             prog.empty()
 
             rows_t1 = []
-            for lbl, d in [("🔄 Hybryda V30 (Tab.1 + 🟦)", r_hy), ("⬜ Bez Niebieskiej V30 (Tylko Tab.1)", r_nb)]:
+            for lbl, d in [("⬜ Bez Niebieskiej V31 (Tylko Tab.1)", r_nb), ("🔄 Hybryda V31 (Tab.1 + 🟦)", r_hy)]:
                 pb = d["p_any"] + d["p_both"]
                 pb_pct = (pb / (ab_len * 2.0)) * 100.0
                 rows_t1.append({
-                    "Tryb V30": lbl,
-                    "raw_pb": pb_pct, "raw_pa": d["p_any"] / ab_len * 100.0,
+                    "Tryb V31": lbl, "raw_pb": pb_pct, "raw_pa": d["p_any"] / ab_len * 100.0,
                     "Para #1+#2 (na 1 kulę)": f"{pb_pct:.2f}% ({pb}/{ab_len*2})",
                     "Para: min. 1 traf.": f"{d['p_any']/ab_len*100:.1f}% ({d['p_any']}/{ab_len})",
                     "Para: pełne 2/2": f"{d['p_both']/ab_len*100:.2f}% ({d['p_both']}x)",
@@ -1062,35 +1072,28 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                     "TOP 5: 2+ / 3+": f"{d['t5_2p']/ab_len*100:.1f}% ({d['t5_2p']}) | 3+: {d['t5_3p']/ab_len*100:.1f}%",
                     "#1 / #2": f"{d['s1_h']/ab_len*100:.1f}% / {d['s2_h']/ab_len*100:.1f}%"
                 })
-
             win_t1 = max(rows_t1, key=lambda x: (x["raw_pb"], x["raw_pa"]))
             rows_t1.append({
-                "Tryb V30": "🎲 Losowy wybór (teoria Keno 20/70)",
-                "raw_pb": 28.57, "raw_pa": 49.28,
-                "Para #1+#2 (na 1 kulę)": "28.57% (baza losowa)",
-                "Para: min. 1 traf.": "49.28% (baza losowa)",
-                "Para: pełne 2/2": "7.87% (baza losowa)",
-                "Śr. TOP 5 (kula)": "28.57% (baza losowa)",
-                "TOP 5: 2+ / 3+": "44.44% | 3+: 13.67%",
-                "#1 / #2": "28.6% / 28.6%"
+                "Tryb V31": "🎲 Losowy wybór (teoria Keno 20/70)", "raw_pb": 28.57, "raw_pa": 49.28,
+                "Para #1+#2 (na 1 kulę)": "28.57% (baza losowa)", "Para: min. 1 traf.": "49.28% (baza losowa)",
+                "Para: pełne 2/2": "7.87% (baza losowa)", "Śr. TOP 5 (kula)": "28.57% (baza losowa)",
+                "TOP 5: 2+ / 3+": "44.44% | 3+: 13.67%", "#1 / #2": "28.6% / 28.6%"
             })
-            st.session_state["v30_t1_df"] = pd.DataFrame(rows_t1).drop(columns=["raw_pb", "raw_pa"])
-            st.session_state["v30_t1_msg"] = (
-                f"🏆 **WYNIK TESTU 1 ({ab_len} gier, Okno {ab_win}):** **{win_t1['Tryb V30']}** — "
-                f"Para #1+#2: **{win_t1['Para #1+#2 (na 1 kulę)']}** ({win_t1['raw_pb'] - 28.57:+.2f} pkt proc. vs losowe `28.57%`) | "
-                f"Min. 1: **{win_t1['Para: min. 1 traf.']}** | Pełne 2/2: **{win_t1['Para: pełne 2/2']}**."
+            st.session_state["v31_t1_df"] = pd.DataFrame(rows_t1).drop(columns=["raw_pb", "raw_pa"])
+            st.session_state["v31_t1_msg"] = (
+                f"🏆 **WYNIK TESTU 1 ({ab_len} gier, Okno {ab_win}):** **{win_t1['Tryb V31']}** — "
+                f"Para #1+#2: **{win_t1['Para #1+#2 (na 1 kulę)']}** ({win_t1['raw_pb'] - 28.57:+.2f} pkt proc. vs losowe `28.57%`)."
             )
 
         if run_t2:
             prog = st.progress(0, text=f"Testuję wszystkie 8 okien [{mode_tag}] na {ab_len} grach...")
             rows_t2 = []
             for idx_w, w_val in enumerate(all_windows):
-                d = eval_clean_v30(w_val, active_mode, ab_len)
+                d = eval_clean_v31(w_val, active_mode, ab_len)
                 pb = d["p_any"] + d["p_both"]
                 pb_pct = (pb / (ab_len * 2.0)) * 100.0
                 rows_t2.append({
-                    f"Okno ({mode_tag})": f"Okno {w_val}",
-                    "raw_pb": pb_pct,
+                    f"Okno ({mode_tag})": f"Okno {w_val}", "raw_pb": pb_pct,
                     "Para #1+#2 (na 1 kulę)": f"{pb_pct:.2f}% ({pb}/{ab_len*2})",
                     "Para: min. 1 traf.": f"{d['p_any']/ab_len*100:.1f}% ({d['p_any']}/{ab_len})",
                     "Para: pełne 2/2": f"{d['p_both']/ab_len*100:.2f}% ({d['p_both']}x)",
@@ -1100,20 +1103,135 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                 prog.progress((idx_w + 1) / len(all_windows))
             prog.empty()
             rows_t2.sort(key=lambda x: -x["raw_pb"])
-            st.session_state["v30_t2_df"] = pd.DataFrame(rows_t2).drop(columns=["raw_pb"])
-            st.session_state["v30_t2_msg"] = (
+            st.session_state["v31_t2_df"] = pd.DataFrame(rows_t2).drop(columns=["raw_pb"])
+            st.session_state["v31_t2_msg"] = (
                 f"🏆 **NAJLEPSZE OKNO NA {ab_len} GRACH ({mode_tag}):** **{rows_t2[0][f'Okno ({mode_tag})']}** — "
-                f"Para #1+#2: **{rows_t2[0]['Para #1+#2 (na 1 kulę)']}** | Min. 1: **{rows_t2[0]['Para: min. 1 traf.']}** | 2/2: **{rows_t2[0]['Para: pełne 2/2']}**."
+                f"Para #1+#2: **{rows_t2[0]['Para #1+#2 (na 1 kulę)']}** | Min. 1: **{rows_t2[0]['Para: min. 1 traf.']}**."
             )
 
-        if "v30_t1_msg" in st.session_state:
-            st.success(st.session_state["v30_t1_msg"])
-        if "v30_t1_df" in st.session_state:
-            st.dataframe(st.session_state["v30_t1_df"], hide_index=True, use_container_width=True)
-        if "v30_t2_msg" in st.session_state:
-            st.info(st.session_state["v30_t2_msg"])
-        if "v30_t2_df" in st.session_state:
-            st.dataframe(st.session_state["v30_t2_df"], hide_index=True, use_container_width=True)
+        if run_t3:
+            prog = st.progress(0, text=f"Sprawdzam efekt opóźnienia (Echo T+2) na {ab_len} losowaniach (Okno {ab_win}, {mode_tag})...")
+            sc_e = build_scorer_v31(ab_win, ab_len + 6, engine_mode=active_mode)
+
+            # 1) Normalna Para #1+#2 (T+1)
+            norm_any = norm_both = 0
+            # 2) Echo T+2 z pudeł Pary #1+#2 (gdy co najmniej 1 z #1/#2 nie wpadła w T)
+            echo_p_balls_tot = echo_p_balls_hits = 0
+            echo_p_games_2miss = echo_p_2miss_any = echo_p_2miss_both = 0
+            # 3) Echo T+2 ze wszystkich pudeł TOP 5
+            echo_5_balls_tot = echo_5_balls_hits = echo_5_games_any = 0
+            # 4) Miks: #1 Świeża (z T) + #1 Echo (najwyższe pudło z T-1)
+            mix_any = mix_both = 0
+
+            for st_i in range(ab_len):
+                t_c = latest_idx - 1 - st_i
+                nxt = all_sets[t_c + 1]
+                cands_now, _, _, _ = sc_e(t_c, return_df=False)
+                mp_prev, mr_prev = get_echo_candidates_at_t(sc_e, t_c)
+
+                # Normalna para #1+#2
+                nh1, nh2 = (cands_now[0]["Liczba"] in nxt), (cands_now[1]["Liczba"] in nxt)
+                if nh1 or nh2: norm_any += 1
+                if nh1 and nh2: norm_both += 1
+
+                # Echo z pudeł pary #1+#2
+                for c_m in mp_prev:
+                    echo_p_balls_tot += 1
+                    if c_m["Liczba"] in nxt:
+                        echo_p_balls_hits += 1
+                if len(mp_prev) == 2:
+                    echo_p_games_2miss += 1
+                    eh1, eh2 = (mp_prev[0]["Liczba"] in nxt), (mp_prev[1]["Liczba"] in nxt)
+                    if eh1 or eh2: echo_p_2miss_any += 1
+                    if eh1 and eh2: echo_p_2miss_both += 1
+
+                # Echo ze wszystkich pudeł TOP 5
+                all_m5 = mp_prev + mr_prev
+                h5_echo = 0
+                for c_m in all_m5:
+                    echo_5_balls_tot += 1
+                    if c_m["Liczba"] in nxt:
+                        echo_5_balls_hits += 1
+                        h5_echo += 1
+                if h5_echo >= 1:
+                    echo_5_games_any += 1
+
+                # Miks: #1 świeża + #1 Echo (a jeśli w TOP 5 nie było pudeł, bierzemy #2 świeżą)
+                fresh_1 = cands_now[0]["Liczba"]
+                echo_1 = all_m5[0]["Liczba"] if len(all_m5) > 0 else cands_now[1]["Liczba"]
+                mh1, mh2 = (fresh_1 in nxt), (echo_1 in nxt)
+                if mh1 or mh2: mix_any += 1
+                if mh1 and mh2: mix_both += 1
+
+                if st_i % 100 == 0:
+                    prog.progress(min(0.99, (st_i + 1) / ab_len))
+
+            prog.progress(1.0)
+            prog.empty()
+
+            norm_pb = ((norm_any + norm_both) / (ab_len * 2.0)) * 100.0
+            echo_p_pb = (echo_p_balls_hits / max(1, echo_p_balls_tot)) * 100.0
+            echo_5_pb = (echo_5_balls_hits / max(1, echo_5_balls_tot)) * 100.0
+            mix_pb = ((mix_any + mix_both) / (ab_len * 2.0)) * 100.0
+
+            rows_t3 = [
+                {
+                    "Strategia (Okno " + str(ab_win) + ", " + mode_tag + ")": "🎯 Standardowa Para #1+#2 (świeże z T)",
+                    "Trafność na 1 kulę": f"{norm_pb:.2f}% ({norm_any+norm_both}/{ab_len*2})",
+                    "Min. 1 z pary (2 kule)": f"{norm_any/ab_len*100:.1f}% ({norm_any}/{ab_len})",
+                    "Pełne 2/2": f"{norm_both/ab_len*100:.2f}% ({norm_both}x)",
+                    "Uwagi": "Bieżący model V31"
+                },
+                {
+                    "Strategia (Okno " + str(ab_win) + ", " + mode_tag + ")": "🔄 Echo T+2: Pudła Pary #1+#2 z T-1",
+                    "Trafność na 1 kulę": f"{echo_p_pb:.2f}% ({echo_p_balls_hits}/{echo_p_balls_tot})",
+                    "Min. 1 z pary (2 kule)": f"{echo_p_2miss_any/max(1,echo_p_games_2miss)*100:.1f}% ({echo_p_2miss_any}/{echo_p_games_2miss} po 0/2)",
+                    "Pełne 2/2": f"{echo_p_2miss_both/max(1,echo_p_games_2miss)*100:.2f}% ({echo_p_2miss_both}x)",
+                    "Uwagi": "Kule z #1/#2 pominięte w T, sprawdzone w T+1"
+                },
+                {
+                    "Strategia (Okno " + str(ab_win) + ", " + mode_tag + ")": "🔄 Echo T+2: Wszystkie pudła TOP 5 z T-1",
+                    "Trafność na 1 kulę": f"{echo_5_pb:.2f}% ({echo_5_balls_hits}/{echo_5_balls_tot})",
+                    "Min. 1 z pary (2 kule)": f"Min. 1 z puli: {echo_5_games_any/ab_len*100:.1f}% ({echo_5_games_any}/{ab_len})",
+                    "Pełne 2/2": "-",
+                    "Uwagi": "Śr. ~3,5 pudła z TOP 5 przechodzi na T+1"
+                },
+                {
+                    "Strategia (Okno " + str(ab_win) + ", " + mode_tag + ")": "⚡ MIKS: #1 Świeża (z T) + #1 Echo (z T-1)",
+                    "Trafność na 1 kulę": f"{mix_pb:.2f}% ({mix_any+mix_both}/{ab_len*2})",
+                    "Min. 1 z pary (2 kule)": f"{mix_any/ab_len*100:.1f}% ({mix_any}/{ab_len})",
+                    "Pełne 2/2": f"{mix_both/ab_len*100:.2f}% ({mix_both}x)",
+                    "Uwagi": "Połączenie świeżego lidera z opóźnionym pudłem"
+                },
+                {
+                    "Strategia (Okno " + str(ab_win) + ", " + mode_tag + ")": "🎲 Losowy wybór (teoria Keno 20/70)",
+                    "Trafność na 1 kulę": "28.57% (baza losowa)",
+                    "Min. 1 z pary (2 kule)": "49.28% (baza losowa)",
+                    "Pełne 2/2": "7.87% (baza losowa)",
+                    "Uwagi": "Punkt odniesienia niezależnych losowań"
+                }
+            ]
+            st.session_state["v31_t3_df"] = pd.DataFrame(rows_t3)
+            diff_echo = echo_p_pb - 28.57
+            diff_mix = mix_pb - norm_pb
+            st.session_state["v31_t3_msg"] = (
+                f"🔭 **WYNIK TESTU OPÓŹNIENIA ECHO T+2 ({ab_len} gier, Okno {ab_win}):** "
+                f"Opóźnione pudła pary `#1+#2` trafiają w kolejnym losowaniu **`{echo_p_pb:.2f}%`** (`{diff_echo:+.2f}` pkt proc. vs losowe `28.57%`) | "
+                f"**MIKS (#1 Świeża + #1 Echo)** daje **`{mix_pb:.2f}%`** (`{diff_mix:+.2f}` pkt proc. względem czystego `#1+#2`: `{norm_pb:.2f}%`)."
+            )
+
+        if "v31_t3_msg" in st.session_state:
+            st.success(st.session_state["v31_t3_msg"])
+        if "v31_t3_df" in st.session_state:
+            st.dataframe(st.session_state["v31_t3_df"], hide_index=True, use_container_width=True)
+        if "v31_t1_msg" in st.session_state:
+            st.info(st.session_state["v31_t1_msg"])
+        if "v31_t1_df" in st.session_state:
+            st.dataframe(st.session_state["v31_t1_df"], hide_index=True, use_container_width=True)
+        if "v31_t2_msg" in st.session_state:
+            st.info(st.session_state["v31_t2_msg"])
+        if "v31_t2_df" in st.session_state:
+            st.dataframe(st.session_state["v31_t2_df"], hide_index=True, use_container_width=True)
 
     # =================================================================
     # OBLICZENIE WSZYSTKICH 8 OKIEN (5–15) — CZYSTE #1 + #2 (+#3)
@@ -1125,7 +1243,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     consensus_score = defaultdict(float)
 
     for w_val in all_windows:
-        sc = build_scorer_v30(w_val, eval_long + 2, engine_mode=active_mode)
+        sc = build_scorer_v31(w_val, eval_long + 5, engine_mode=active_mode)
         win_scorers[w_val] = sc
         cands_now, _, _, _ = sc(latest_idx, return_df=False)
         t5_now = cands_now[:5]
@@ -1140,7 +1258,6 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         t5_2p_30 = t5_2p_10 = 0
         s_hits_30 = [0, 0, 0, 0, 0]
         s_hits_10 = [0, 0, 0, 0, 0]
-        last1_hit = False
 
         for step_i in range(eval_long):
             t_s = latest_idx - 1 - step_i
@@ -1150,8 +1267,6 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             hc = sum(1 for x in hf if x)
             ph = (1 if hf[0] else 0) + (1 if hf[1] else 0)
 
-            if step_i == 0 and ph >= 1:
-                last1_hit = True
             if hc >= 2:
                 t5_2p_30 += 1
                 if step_i < eval_short:
@@ -1172,17 +1287,18 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         ball_pct_30 = ((p_any_30 + p_both_30) / (eval_long * 2.0)) * 100.0
         ball_pct_10 = ((p_any_10 + p_both_10) / (eval_short * 2.0)) * 100.0
 
-        # Prosty, przejrzysty ranking okien: 65% stabilność z 30g + 35% forma z 10g
+        # Poprawiony ranking okien: większa waga realnej skuteczności na kulę + min. 1 w 30g!
         power = (
-            (ball_pct_30 * 1.4)
-            + (p_both_30 * 3.0)
-            + (t5_2p_30 / eval_long * 20.0)
-            + (ball_pct_10 * 0.75)
-            + (p_rec5 * 2.0)
+            (ball_pct_30 * 1.8)
+            + ((p_any_30 / eval_long) * 35.0)
+            + (p_both_30 * 1.8)
+            + ((t5_2p_30 / eval_long) * 16.0)
+            + (ball_pct_10 * 0.65)
+            + (p_rec5 * 1.5)
         )
 
         win_summary[w_val] = {
-            "w_val": w_val, "power": power, "last1_hit": last1_hit,
+            "w_val": w_val, "power": power,
             "p_any_30": p_any_30, "p_both_30": p_both_30, "ball_pct_30": ball_pct_30,
             "p_any_10": p_any_10, "p_both_10": p_both_10, "p_rec5": p_rec5,
             "t5_2p_30": t5_2p_30, "t5_2p_10": t5_2p_10,
@@ -1235,12 +1351,10 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     )
 
     # =================================================================
-    # GŁÓWNY PANEL TYPÓW NA LOSOWANIE #target_draw_id (CZYSTE #1 + #2 + OPCJONALNA #3)
+    # GŁÓWNY PANEL TYPÓW V31 (ŚWIEŻA PARA #1+#2)
     # =================================================================
-    c_b1 = consensus_cnt[w1["b1"]]
-    c_b2 = consensus_cnt[w1["b2"]]
-    c_b3 = consensus_cnt[w1["b3"]]
-    is_3rd_ok = (w1["s_hits_30"][2] >= 10 and w1["s3"] >= 58.0 and c_b3 >= 3)
+    c_b1, c_b2, c_b3 = consensus_cnt[w1["b1"]], consensus_cnt[w1["b2"]], consensus_cnt[w1["b3"]]
+    is_3rd_ok = (w1["s_hits_30"][2] >= 10 and w1["s3"] >= 60.0 and c_b3 >= 3)
 
     third_html = (
         f"<div style='display:inline-flex; align-items:center; gap:10px; background:rgba(0,230,118,0.18); border:2px solid #00e676; border-radius:10px; padding:9px 14px;'>"
@@ -1257,14 +1371,14 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     sorted_cons = sorted(consensus_cnt.items(), key=lambda x: (-x[1], -consensus_score[x[0]]))[:5]
     cons_str = " &nbsp;|&nbsp; ".join(f"<b>{b:02d}</b> ({cnt}/8 okn.)" for b, cnt in sorted_cons)
 
-    hero_v30_html = (
+    hero_v31_html = (
         f"<div style='background: linear-gradient(135deg, rgba(14, 48, 35, 0.98) 0%, rgba(9, 28, 21, 0.99) 100%); "
-        f"border: 3px solid #ffd166; border-radius: 14px; padding: 16px 20px; margin-bottom: 18px; "
+        f"border: 3px solid #ffd166; border-radius: 14px; padding: 16px 20px; margin-bottom: 14px; "
         f"box-shadow: 0 6px 20px rgba(255, 209, 102, 0.22); font-family: sans-serif;'>"
         f"<div style='display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.55); "
         f"border:2px solid #00e676; border-radius:9px; padding:10px 16px; margin-bottom:14px;'>"
         f"<div style='font-size:16px; font-weight:900; color:#00e676;'>"
-        f"🎯 TYPY V30 [{mode_tag}] NA LOSOWANIE: <span style='color:#fff; background:#e63946; padding:3px 10px; border-radius:6px; font-size:18px;'>#{target_draw_id} (godz. {target_time_str})</span>"
+        f"🎯 TYPY V31 [{mode_tag}] NA LOSOWANIE: <span style='color:#fff; background:#e63946; padding:3px 10px; border-radius:6px; font-size:18px;'>#{target_draw_id} (godz. {target_time_str})</span>"
         f"</div>"
         f"<div style='font-size:13px; color:#ffd166; font-weight:bold;'>"
         f"🏆 Lider: <b>OKNO {best_win}</b> (Para #1+#2 w 30g: <b>{w1['p_any_30']}/30 = {w1['p_any_30']/eval_long*100:.0f}%</b>, pełne 2/2: <b>{w1['p_both_30']}x</b>, śr./kulę: <b>{w1['ball_pct_30']:.1f}%</b> | 10g: <b>{w1['p_any_10']}/10</b>)"
@@ -1273,7 +1387,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         f"<div style='display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px;'>"
         f"<div style='display:inline-flex; align-items:center; gap:12px; background:rgba(0,0,0,0.65); border:3px solid #ffd166; border-radius:12px; padding:10px 18px; box-shadow:0 0 16px rgba(255,209,102,0.4);'>"
         f"<div>"
-        f"<div style='font-size:14px; color:#ffd166; font-weight:900;'>👑 2 GŁÓWNE LICZBY (CZYSTE #1 + #2 Z OKNA {best_win}):</div>"
+        f"<div style='font-size:14px; color:#ffd166; font-weight:900;'>👑 2 GŁÓWNE LICZBY (ŚWIEŻE #1 + #2 Z OKNA {best_win}):</div>"
         f"<div style='font-size:11px; color:#e6e6e6;'>"
         f"<b>#1: Poz.{w1['p1']:02d}</b> ({w1['s1']:.0f} pkt | 30g: {w1['s_hits_30'][0]}/30 | w {c_b1}/8 okn.) &nbsp;|&nbsp; "
         f"<b>#2: Poz.{w1['p2']:02d}</b> ({w1['s2']:.0f} pkt | 30g: {w1['s_hits_30'][1]}/30 | w {c_b2}/8 okn.)"
@@ -1291,10 +1405,79 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         f"</div>"
         f"</div>"
     )
-    st.markdown(hero_v30_html, unsafe_allow_html=True)
+    st.markdown(hero_v31_html, unsafe_allow_html=True)
 
     # =================================================================
-    # TABELA 1: ZESTAWIENIE 8 OKIEN (5–15) — BEZ SKAKANIA PO SLOTACH
+    # NOWY MODUŁ: 🔄 RADAR OPÓŹNIEŃ (ECHO T+2) DLA ZWYCIĘSKIEGO OKNA
+    # =================================================================
+    best_sc = win_scorers[best_win]
+    live_mp, live_mr = get_echo_candidates_at_t(best_sc, latest_idx)
+    echo_30_tot = echo_30_hits = mix_30_any = mix_30_both = 0
+    for st_i in range(eval_long):
+        t_s = latest_idx - 1 - st_i
+        nxt = all_sets[t_s + 1]
+        mp_s, mr_s = get_echo_candidates_at_t(best_sc, t_s)
+        c_now_s, _, _, _ = best_sc(t_s, return_df=False)
+        for cm in mp_s:
+            echo_30_tot += 1
+            if cm["Liczba"] in nxt:
+                echo_30_hits += 1
+        all_ms = mp_s + mr_s
+        e1_b = all_ms[0]["Liczba"] if len(all_ms) > 0 else c_now_s[1]["Liczba"]
+        mh1, mh2 = (c_now_s[0]["Liczba"] in nxt), (e1_b in nxt)
+        if mh1 or mh2: mix_30_any += 1
+        if mh1 and mh2: mix_30_both += 1
+
+    echo_30_pct = (echo_30_hits / max(1, echo_30_tot)) * 100.0
+    mix_30_pct = ((mix_30_any + mix_30_both) / (eval_long * 2.0)) * 100.0
+    live_all_echo = live_mp + live_mr
+    top_echo_ball = live_all_echo[0]["Liczba"] if len(live_all_echo) > 0 else w1["b2"]
+
+    if len(live_mp) > 0:
+        mp_pills = " ".join(
+            f"<span style='font-size:22px; font-weight:900; color:#fff; background:#7b2cbf; padding:2px 11px; border-radius:7px; border:2px solid #e0aaff;'>"
+            f"{c['Liczba']:02d} <span style='font-size:10px; color:#e0aaff;'>({c['Rank']}, {c['Score']:.0f}p)</span></span>"
+            for c in live_mp
+        )
+    else:
+        mp_pills = "<span style='color:#00e676; font-weight:bold; font-size:13px;'>✅ Brak pudeł (oba typy #1 i #2 wpadły już w #" + str(last_draw_id) + "!)</span>"
+
+    mr_pills = " ".join(
+        f"<span style='font-size:14px; font-weight:800; color:#e0aaff; background:#241b35; padding:2px 8px; border-radius:6px; border:1px solid #9d4edd;'>"
+        f"{c['Liczba']:02d} ({c['Rank']})</span>"
+        for c in live_mr
+    ) if len(live_mr) > 0 else "<span style='color:#8a94a6;'>brak</span>"
+
+    echo_radar_html = (
+        f"<div style='background: linear-gradient(135deg, rgba(35, 18, 58, 0.96) 0%, rgba(20, 12, 36, 0.99) 100%); "
+        f"border: 2px solid #c77dff; border-radius: 12px; padding: 13px 18px; margin-bottom: 18px; font-family: sans-serif;'>"
+        f"<div style='display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;'>"
+        f"<div style='font-size:14px; font-weight:900; color:#e0aaff;'>"
+        f"🔄 RADAR OPÓŹNIEŃ (ECHO T+2) NA #{target_draw_id} — Pudła z typowania na #{last_draw_id}, które mogą wpaść z 1-losowaniowym opóźnieniem (Okno {best_win}):"
+        f"</div>"
+        f"<div style='font-size:12px; color:#ffd166; font-weight:bold;'>"
+        f"📊 Echo pudeł pary (ost. 30g): <b>{echo_30_hits}/{echo_30_tot} ({echo_30_pct:.1f}%)</b> | "
+        f"MIKS #1 Świeża + #1 Echo (30g): <b>{mix_30_any}/30 ({mix_30_any/eval_long*100:.0f}%), 2/2: {mix_30_both}x, śr./kulę: {mix_30_pct:.1f}%</b>"
+        f"</div>"
+        f"</div>"
+        f"<div style='display:flex; flex-wrap:wrap; gap:16px; align-items:center;'>"
+        f"<div style='display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;'>"
+        f"<span style='font-size:12px; color:#d0d7de; font-weight:bold;'>Pudła z Pary #1+#2 (główne Echo):</span> {mp_pills}"
+        f"</div>"
+        f"<div style='display:inline-flex; align-items:center; gap:8px; background:rgba(0,0,0,0.45); border:1.5px solid #ffd166; border-radius:9px; padding:5px 12px;'>"
+        f"<span style='font-size:12px; color:#ffd166; font-weight:900;'>⚡ MIKS (#1 Świeża + #1 Echo):</span>"
+        f"<span style='font-size:21px; font-weight:900; color:#fff; background:#e63946; padding:1px 9px; border-radius:6px;'>{w1['b1']:02d}</span>"
+        f"<span style='font-size:14px; color:#ffd166; font-weight:bold;'>+</span>"
+        f"<span style='font-size:21px; font-weight:900; color:#fff; background:#7b2cbf; padding:1px 9px; border-radius:6px; border:1px solid #e0aaff;'>{top_echo_ball:02d}</span>"
+        f"</div>"
+        f"<div style='font-size:12px; color:#b0b8c8;'>Pudła z #3–#5: {mr_pills}</div>"
+        f"</div>"
+        f"</div>"
+    )
+    st.markdown(echo_radar_html, unsafe_allow_html=True)
+
+    # =================================================================
+    # TABELA 1: ZESTAWIENIE 8 OKIEN (5–15)
     # =================================================================
     st.subheader(f"📊 1. Zestawienie Okien Analizy (5–15) — Skuteczność czystego #1+#2 na #{target_draw_id}")
     win_rows = []
@@ -1313,8 +1496,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
 
         pills = []
         for s_k, r_t5 in enumerate(t5_w):
-            bv = int(r_t5["Liczba"])
-            sh = wi["s_hits_30"][s_k]
+            bv, sh = int(r_t5["Liczba"]), wi["s_hits_30"][s_k]
             if s_k < 2:
                 pills.append(
                     f"<span style='display:inline-block; padding:3px 8px; margin:2px; border:2px solid #ffd166; border-radius:6px; "
@@ -1358,7 +1540,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     components.html(tbl1_html, height=430, scrolling=True)
 
     # =================================================================
-    # TABELA 2: CZYTELNA TABELA GŁÓWNA Z AKTYWNYM LOSOWANIEM NA GÓRZE
+    # TABELA 2: CZYTELNA TABELA GŁÓWNA + NOWA KOLUMNA "🔄 Echo T+2"
     # =================================================================
     st.divider()
     c_s1, c_s2 = st.columns([1.3, 0.9])
@@ -1367,18 +1549,14 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         sel_w_opt = st.radio(
             f"⚙️ Okno dla Tabeli nr 2 (⭐ Auto = Okno {best_win}):",
             options=[auto_lbl] + all_windows,
-            index=0,
-            horizontal=True,
-            key="v30_det_win"
+            index=0, horizontal=True, key="v31_det_win"
         )
         detail_win = best_win if sel_w_opt == auto_lbl else int(sel_w_opt)
     with c_s2:
         detail_bt = st.radio(
             "🧪 Historia w Tabeli nr 2 (losowań):",
             options=[10, 15, 20, 30],
-            index=2,
-            horizontal=True,
-            key="v30_det_bt"
+            index=2, horizontal=True, key="v31_det_bt"
         )
 
     det_scorer = win_scorers[detail_win]
@@ -1390,8 +1568,13 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
 
     bt_rows = []
     slot_hits_bt = [0, 0, 0, 0, 0]
+    det_mp_live, _ = get_echo_candidates_at_t(det_scorer, latest_idx)
+    live_echo_cell = " ".join(
+        f"<span style='padding:2px 6px; border:1.5px solid #e0aaff; border-radius:5px; background:#7b2cbf; color:#fff; font-weight:900; font-size:12px;'>{c['Liczba']:02d}</span>"
+        for c in det_mp_live
+    ) if len(det_mp_live) > 0 else "<span style='color:#00e676; font-size:10px;'>2/2 trafiły!</span>"
 
-    # Wiersz 0: aktywne losowanie na górze
+    # Wiersz 0: aktywne losowanie
     live_cells = []
     for k in range(5):
         r = top5_now.iloc[k]
@@ -1400,21 +1583,21 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         if k < 2:
             box = (
                 f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
-                f"width:56px; height:38px; border:2.5px solid #ffd166; border-radius:7px; background:#e63946; color:#fff; font-weight:900;'>"
-                f"<span style='font-size:15px; line-height:15px;'>🎯{bv:02d}</span>"
+                f"width:54px; height:38px; border:2.5px solid #ffd166; border-radius:7px; background:#e63946; color:#fff; font-weight:900;'>"
+                f"<span style='font-size:14px; line-height:14px;'>🎯{bv:02d}</span>"
                 f"<span style='font-size:8px; color:#ffd166; line-height:9px;'>{sub}</span></div>"
             )
         elif k == 2:
             box = (
                 f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
-                f"width:56px; height:38px; border:2px dashed #00e676; border-radius:7px; background:#0077b6; color:#fff; font-weight:bold;'>"
-                f"<span style='font-size:14px; line-height:14px;'>+{bv:02d}</span>"
+                f"width:54px; height:38px; border:2px dashed #00e676; border-radius:7px; background:#0077b6; color:#fff; font-weight:bold;'>"
+                f"<span style='font-size:13px; line-height:13px;'>+{bv:02d}</span>"
                 f"<span style='font-size:8px; color:#b9f6ca; line-height:9px;'>{sub}</span></div>"
             )
         else:
             box = (
                 f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
-                f"width:54px; height:36px; border:1px solid #3c4252; border-radius:6px; background:#1c202b;'>"
+                f"width:52px; height:36px; border:1px solid #3c4252; border-radius:6px; background:#1c202b;'>"
                 f"<span style='font-size:13px; color:#d0d7de; line-height:14px;'>{bv:02d}</span>"
                 f"<span style='font-size:8px; color:#8a94a6; line-height:9px;'>{sub}</span></div>"
             )
@@ -1427,21 +1610,33 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         <td style='padding:7px 6px; color:#ffd166; font-weight:900; white-space:nowrap; font-size:11px;'>🔥 #{last_draw_id}<br><span style='font-size:9px; color:#fff;'>({last_time_str})</span></td>
         <td style='padding:7px 6px; font-weight:900; color:#00e676; white-space:nowrap; font-size:12px; border-right:2px solid #ffd166;'>🎯 #{target_draw_id}<br><span style='font-size:9px; color:#ffd166;'>({target_time_str})</span></td>
         <td style='padding:7px 6px; text-align:center; white-space:nowrap; border-right:2px solid #ffd166;'>
-            <span style='padding:3px 7px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{lb1:02d}(P{lp1:02d})</span>
-            <span style='padding:3px 7px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{lb2:02d}(P{lp2:02d})</span>
-            <span style='padding:2px 5px; border:1.5px dashed #00e676; border-radius:5px; background:#0077b6; color:#fff; font-weight:bold; font-size:11px;'>+{lb3:02d}</span>
+            <span style='padding:3px 6px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{lb1:02d}(P{lp1:02d})</span>
+            <span style='padding:3px 6px; border:2px solid #ffd166; border-radius:6px; background:#e63946; color:#fff; font-weight:900; font-size:13px;'>{lb2:02d}(P{lp2:02d})</span>
         </td>
+        <td style='padding:7px 6px; text-align:center; white-space:nowrap; border-right:2px solid #c77dff;'>{live_echo_cell}</td>
         {''.join(live_cells)}
         <td style='padding:7px 6px; text-align:center; font-weight:900; font-size:11px; color:#ffd166; border-left:2px solid #ffd166;'>⏳ W GRZE</td>
         <td style='padding:7px 6px; text-align:center; font-weight:900; font-size:11px; color:#00e676;'>#{target_draw_id}</td>
     </tr>
     """)
 
+    echo_bt_hits = echo_bt_tot = 0
     for st_i in range(detail_bt):
         t_s = latest_idx - 1 - st_i
         cands_s, _, _, _ = det_scorer(t_s, return_df=False)
         nxt = all_sets[t_s + 1]
         t5_s, t8_s = cands_s[:5], cands_s[:8]
+        mp_s, _ = get_echo_candidates_at_t(det_scorer, t_s)
+
+        echo_badges = []
+        for cm in mp_s:
+            echo_bt_tot += 1
+            if cm["Liczba"] in nxt:
+                echo_bt_hits += 1
+                echo_badges.append(f"<span style='padding:2px 5px; border:1.5px solid #e0aaff; border-radius:4px; background:rgba(157,78,221,0.45); color:#fff; font-weight:bold;'>{cm['Liczba']:02d}🟩</span>")
+            else:
+                echo_badges.append(f"<span style='color:#7d8597;'>{cm['Liczba']:02d}</span>")
+        echo_cell_html = " ".join(echo_badges) if echo_badges else "<span style='color:#4a5568; font-size:10px;'>— (2/2)</span>"
 
         row_cells = []
         for k, rp in enumerate(t5_s):
@@ -1454,14 +1649,14 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
                 bc = "#ffd166" if k < 2 else "#00e676"
                 box = (
                     f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
-                    f"width:54px; height:34px; border:2px solid {bc}; border-radius:6px; background:rgba(0,230,118,0.30); color:#fff; font-weight:bold;'>"
+                    f"width:52px; height:34px; border:2px solid {bc}; border-radius:6px; background:rgba(0,230,118,0.30); color:#fff; font-weight:bold;'>"
                     f"<span style='font-size:13px; line-height:13px;'>{bv:02d}</span>"
                     f"<span style='font-size:8px; color:#b9f6ca; line-height:9px;'>{sub}</span></div>"
                 )
             else:
                 box = (
                     f"<div style='display:inline-flex; flex-direction:column; align-items:center; justify-content:center; "
-                    f"width:54px; height:34px; border:1px solid #2b303c; border-radius:6px; background:#151821;'>"
+                    f"width:52px; height:34px; border:1px solid #2b303c; border-radius:6px; background:#151821;'>"
                     f"<span style='font-size:12px; color:#a8b0c0; line-height:13px;'>{bv:02d}</span>"
                     f"<span style='font-size:8px; color:#6c7385; line-height:9px;'>{sub}</span></div>"
                 )
@@ -1483,13 +1678,14 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             <td style='padding:5px 6px; color:#9da3af; white-space:nowrap; font-size:11px;'>#{all_ids[t_s]}<br><span style='font-size:9px; color:#6c7385;'>({all_times[t_s]})</span></td>
             <td style='padding:5px 6px; font-weight:bold; color:#fff; white-space:nowrap; font-size:11px; border-right:2px solid #333945;'>#{all_ids[t_s+1]}</td>
             <td style='padding:5px 6px; text-align:center; white-space:nowrap; font-size:11px; border-right:2px solid #333945;'>{b1_html} &nbsp; {b2_html}</td>
+            <td style='padding:5px 6px; text-align:center; white-space:nowrap; font-size:11px; border-right:2px solid #333945; background:rgba(157,78,221,0.06);'>{echo_cell_html}</td>
             {''.join(row_cells)}
             <td style='padding:5px 6px; text-align:center; font-weight:bold; font-size:12px; color:{h5c}; background:{h5bg}; border-left:2px solid #333945;'>{h5} / 5</td>
             <td style='padding:5px 6px; text-align:center; font-weight:bold; font-size:12px; color:#4da6ff;'>{h8} / 8</td>
         </tr>
         """)
 
-    st.markdown(f"### 📋 2. Tabela Główna V30 (Okno {detail_win} | **{mode_tag}**) — Czyste #1+#2 na **#{target_draw_id} ({target_time_str})**")
+    st.markdown(f"### 📋 2. Tabela Główna V31 (Okno {detail_win} | **{mode_tag}**) — Czyste #1+#2 oraz **🔄 Echo T+2** na **#{target_draw_id} ({target_time_str})**")
 
     hdrs = []
     for k in range(5):
@@ -1501,6 +1697,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         else:
             hdrs.append(f"<th style='color:#d0d7de;'>Typ #{k+1}<br><span style='font-size:9px; color:#8a94a6;'>({hc}/{detail_bt})</span></th>")
 
+    echo_bt_pct = (echo_bt_hits / max(1, echo_bt_tot)) * 100.0
     tbl2_html = f"""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
         body {{ margin:0; padding:0; background:#0e1117; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }}
@@ -1512,6 +1709,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         <th style="text-align:left;">Z losowania</th>
         <th style="text-align:left; border-right:2px solid #333945;">Do (T+1)</th>
         <th style="border-right:2px solid #333945; color:#ffd166;">👑 Para #1+#2</th>
+        <th style="border-right:2px solid #333945; color:#e0aaff; background:#241438;">🔄 Echo T+2<br><span style="font-size:9px; color:#c77dff;">({echo_bt_hits}/{echo_bt_tot} = {echo_bt_pct:.0f}%)</span></th>
         {''.join(hdrs)}
         <th style="border-left:2px solid #333945; color:#00e676;">TOP 5</th>
         <th style="color:#4da6ff;">TOP 8</th>
@@ -1520,7 +1718,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
     components.html(tbl2_html, height=660, scrolling=False)
 
     # =================================================================
-    # TABELA 3 (RANKING 20 LICZB — BEZ KOLUMN NIEBIESKICH W TRYBIE NO_BLUE!) + TABELA 4
+    # TABELA 3 (RANKING 20 LICZB) + TABELA 4 (GORĄCE KULE)
     # =================================================================
     col_r3, col_r4 = st.columns([1.45, 0.95], gap="large")
     with col_r3:
@@ -1535,7 +1733,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
             "Pozycja": st.column_config.TextColumn("Pozycja" if is_no_blue else "Poz. (🟦 M.)", width="medium"),
             "Liczba": st.column_config.NumberColumn("Kula", width="small"),
             "Score": st.column_config.ProgressColumn("Siła (Score)", format="%.1f pkt", min_value=0, max_value=100),
-            "Status V30": st.column_config.TextColumn("Status V30", width="medium"),
+            "Status V31": st.column_config.TextColumn("Status V31", width="medium"),
             "⬜ Własne (okno i 15)": st.column_config.TextColumn(f"⬜ Własne ({detail_win} i 15)", width="medium"),
             "Węzeł": st.column_config.TextColumn("Węzeł", width="medium"),
             "Fala Kuli": st.column_config.TextColumn("Fala Kuli", width="medium"),
@@ -1544,7 +1742,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         if not is_no_blue:
             col_cfg["🟦 Kolumna M"] = st.column_config.TextColumn(f"🟦 Kolumna M ({detail_win})", width="medium")
 
-        st.dataframe(df_disp, column_config=col_cfg, hide_index=True, use_container_width=True, height=520, key="v30_rank_tbl")
+        st.dataframe(df_disp, column_config=col_cfg, hide_index=True, use_container_width=True, height=520, key="v31_rank_tbl")
 
     with col_r4:
         st.markdown(f"#### 🔥 4. Najczęściej losowane kule w oknie {detail_win}")
@@ -1566,7 +1764,7 @@ def render_prediction_algorithm(df_full, default_window=10, default_blue_win=10,
         df_hot = pd.DataFrame(hot_rows).sort_values(
             by=["t1_r", "f_r", "in_r"], ascending=[False, False, False], kind="mergesort"
         ).head(25).drop(columns=["f_r", "t1_r", "in_r"])
-        st.dataframe(df_hot, hide_index=True, use_container_width=True, height=520, key="v30_hot_tbl")
+        st.dataframe(df_hot, hide_index=True, use_container_width=True, height=520, key="v31_hot_tbl")
 
-# Wywołanie modułu V30:
+# Wywołanie modułu V31:
 render_prediction_algorithm(df, default_window=10, default_blue_win=10, default_backtest=20)
